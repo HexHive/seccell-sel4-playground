@@ -1,0 +1,23 @@
+[submodule "kernel"]
+	path = kernel
+	url = git@bitbucket.org:atrib/sel4.git
+	branch = secure-florian
+[submodule "projects/musllibc"]
+	path = projects/musllibc
+	url = https://github.com/seL4/musllibc.git
+	branch = 12.0.x-compatible
+[submodule "tools/opensbi"]
+	path = tools/opensbi
+	url = https://github.com/riscv/opensbi.git
+[submodule "projects/sel4runtime"]
+	path = projects/sel4runtime
+	url = https://github.com/seL4/sel4runtime.git
+	branch = 12.0.x-compatible
+[submodule "tools/seL4_tools"]
+	path = tools/seL4_tools
+	url = https://github.com/seL4/seL4_tools.git
+	branch = 12.1.x-compatible
+[submodule "projects/util_libs"]
+	path = projects/util_libs
+	url = https://github.com/seL4/util_libs.git
+	branch = 12.1.x-compatible
