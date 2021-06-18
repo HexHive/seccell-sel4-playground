@@ -20,7 +20,10 @@ target_link_libraries(seccell-test
         sel4
         muslc
         utils
-        sel4runtime
+        sel4muslcsys
+        sel4platsupport
+        sel4utils
+        sel4debug
 )
 
 # Tell the build system that this application is the root task

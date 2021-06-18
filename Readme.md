@@ -34,7 +34,7 @@ However, we suggest naming the directory `build` or at least using the prefix `b
 excludes such directories from tracking.
 
 After you've created the build directory and entered it, set up the build system by invoking
-`../init-build.sh -DRISCV64=1 -DKernelRiscvExtD=1 -DKernelRiscvExtF=1 -DKernelSecCell=1 -DSIMULATION=1`.
+`../init-build.sh -DRISCV64=1 -DKernelRiscvExtD=1 -DKernelRiscvExtF=1 -DKernelSecCell=1`.
 
 ### Building the code
 
