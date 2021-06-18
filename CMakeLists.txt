@@ -12,7 +12,17 @@ include(settings.cmake)
 include(tools/seL4_tools/cmake-tool/all.cmake)
 
 # Name the executable and list source files required to build it
-add_executable(seccell-test src/main.c)
+add_executable(
+    seccell-test
+    src/main.c
+    src/alloc.c
+)
+
+# Add the global include directory
+target_include_directories(seccell-test
+    PRIVATE
+        include/
+)
 
 # List the libraries to link with the application
 target_link_libraries(seccell-test
