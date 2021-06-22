@@ -35,6 +35,19 @@ int main(int argc, char *argv[]) {
     error = seL4_RISCV_Range_Map(range4, seL4_CapInitThreadVSpace, TEST_VADDR + 0x3000, seL4_ReadWrite, seL4_RISCV_Default_VMAttributes);
     ZF_LOGF_IF(error != seL4_NoError, "Failed to map range");
 
+    seL4_RISCV_Range_GetAddress_t addr = seL4_RISCV_Range_GetAddress(range);
+    ZF_LOGF_IF(addr.error != seL4_NoError, "Failed to retrieve physical address");
+    printf("Range 1: %p\n", (void *)addr.paddr);
+    seL4_RISCV_Range_GetAddress_t addr2 = seL4_RISCV_Range_GetAddress(range2);
+    ZF_LOGF_IF(addr2.error != seL4_NoError, "Failed to retrieve physical address");
+    printf("Range 2: %p\n", (void *)addr2.paddr);
+    seL4_RISCV_Range_GetAddress_t addr3 = seL4_RISCV_Range_GetAddress(range3);
+    ZF_LOGF_IF(addr3.error != seL4_NoError, "Failed to retrieve physical address");
+    printf("Range 3: %p\n", (void *)addr3.paddr);
+    seL4_RISCV_Range_GetAddress_t addr4 = seL4_RISCV_Range_GetAddress(range4);
+    ZF_LOGF_IF(addr4.error != seL4_NoError, "Failed to retrieve physical address");
+    printf("Range 4: %p\n", (void *)addr4.paddr);
+
     seL4_Word *x = (seL4_Word *) TEST_VADDR;
     printf("Read x: %lu\n", *x);
 
@@ -49,6 +62,10 @@ int main(int argc, char *argv[]) {
 
     /* Check that writing to the mapped range actually worked */
     printf("Read x: %lu\n", *x);
+    printf("Read *(&x + 0x1000): %lu\n", *(seL4_Word *)(TEST_VADDR + 0x1000));
+    printf("Read *(&x + 0x2000): %lu\n", *(seL4_Word *)(TEST_VADDR + 0x2000));
+    printf("Read *(&x + 0x3000): %lu\n", *(seL4_Word *)(TEST_VADDR + 0x3000));
+
 
     printf("Success!\n");
 

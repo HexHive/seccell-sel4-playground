@@ -33,7 +33,6 @@ seL4_CPtr alloc_object(seL4_BootInfo *info, seL4_Word type, seL4_Word size_bits)
         if (!desc->isDevice) {
             seL4_Error error = seL4_Untyped_Retype(untyped, type, BIT(size_bits), seL4_CapInitThreadCNode, 0, 0, cslot, 1);
             if (error == seL4_NoError) {
-                info->untyped.start++;
                 return cslot;
             } else if (error != seL4_NotEnoughMemory) {
                 ZF_LOGF_IF(error != seL4_NotEnoughMemory, "Failed to allocate untyped");
