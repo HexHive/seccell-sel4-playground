@@ -15,10 +15,10 @@ add-symbol-file seccell-test
 
 # Break at jump to kernel
 # Adapt offset in elfloader binary, if necessary
-b *payload_bin+0x398
+b *payload_bin+0x426
 # Run and clear breakpoint, don't need it anymore
 c
-clear *payload_bin+0x398
+clear *payload_bin+0x426
 # Step into kernel
 si
 
