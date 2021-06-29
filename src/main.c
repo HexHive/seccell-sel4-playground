@@ -18,6 +18,7 @@ int main(int argc, char *argv[]) {
         /* Error occured during setup => terminate */
         return 1;
     }
+    debug_print_bootinfo(info);
 
     seL4_Error error;
     seL4_CPtr range = alloc_object(info, seL4_RISCV_RangeObject, seL4_MinRangeBits);
@@ -30,7 +31,7 @@ int main(int argc, char *argv[]) {
     ZF_LOGF_IF(error != seL4_NoError, "Failed to map range");
     error = seL4_RISCV_Range_Map(range2, seL4_CapInitThreadVSpace, TEST_VADDR + 0x1000, seL4_ReadWrite, seL4_RISCV_Default_VMAttributes);
     ZF_LOGF_IF(error != seL4_NoError, "Failed to map range");
-    error = seL4_RISCV_Range_Map(range3, seL4_CapInitThreadVSpace, TEST_VADDR + 0x2000, seL4_ReadWrite, seL4_RISCV_Default_VMAttributes);
+    error = seL4_RISCV_Range_Map(range3, seL4_CapInitThreadVSpace, TEST_VADDR + 0x2000, seL4_CanRead, seL4_RISCV_Default_VMAttributes);
     ZF_LOGF_IF(error != seL4_NoError, "Failed to map range");
     error = seL4_RISCV_Range_Map(range4, seL4_CapInitThreadVSpace, TEST_VADDR + 0x3000, seL4_ReadWrite, seL4_RISCV_Default_VMAttributes);
     ZF_LOGF_IF(error != seL4_NoError, "Failed to map range");
@@ -66,6 +67,8 @@ int main(int argc, char *argv[]) {
     printf("Read *(&x + 0x2000): %lu\n", *(seL4_Word *)(TEST_VADDR + 0x2000));
     printf("Read *(&x + 0x3000): %lu\n", *(seL4_Word *)(TEST_VADDR + 0x3000));
 
+    error = seL4_RISCV_RangeTable_Compact(seL4_CapInitThreadVSpace);
+    ZF_LOGF_IF(error != seL4_NoError, "Failed to compact range table");
 
     printf("Success!\n");
 
