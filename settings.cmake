@@ -26,31 +26,28 @@ list(
 
 include(application_settings)
 
+set(RISCV64 ON CACHE BOOL "" FORCE)
 set(KernelArch "riscv" CACHE STRING "" FORCE)
 set(KernelSel4Arch "riscv64" CACHE STRING "" FORCE)
 set(KernelPlatform "spike" CACHE STRING "" FORCE)
 set(KernelRiscvExtD ON CACHE BOOL "" FORCE)
 set(KernelRiscvExtF ON CACHE BOOL "" FORCE)
 set(KernelSecCell ON CACHE BOOL "" FORCE)
+set(KernelOptimisation "-O0" CACHE STRING "" FORCE)
 ApplyData61ElfLoaderSettings(${KernelPlatform} ${KernelSel4Arch})
 
 include(${project_dir}/kernel/configs/seL4Config.cmake)
 set(CapDLLoaderMaxObjects 20000 CACHE STRING "" FORCE)
 set(KernelRootCNodeSizeBits 16 CACHE STRING "")
 
-# For the tutorials that do initialize the plat support serial printing they still
-# just want to use the kernel debug putchar if it exists
-# set(LibSel4PlatSupportUseDebugPutChar true CACHE BOOL "" FORCE)
-
 # Just let the regular abort spin without calling DebugHalt to prevent needless
-# confusing output from the kernel for a tutorial
+# confusing output from the kernel
 set(LibSel4MuslcSysDebugHalt FALSE CACHE BOOL "" FORCE)
 
 # Only configure a single domain for the domain scheduler
 set(KernelNumDomains 1 CACHE STRING "" FORCE)
 
-# We must build the debug kernel because the tutorials rely on seL4_DebugPutChar
-# and they don't initialize a platsupport driver.
+# We want to build the debug kernel
 ApplyCommonReleaseVerificationSettings(FALSE FALSE)
 
 # We will attempt to generate a simulation script, so try and generate a simulation

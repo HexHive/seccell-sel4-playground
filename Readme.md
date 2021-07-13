@@ -22,19 +22,32 @@ the `qemu-system-riscv64` executable.
 
 Please note that there are also other requirements for building and running the code such as CMake, Ninja, or Python 3
 for building and running the code.
-However, we don't list all the prerequisites because we assume that you have already read the 
+However, we don't list all the prerequisites because we assume that you have already read the
 [seL4 host dependencies webpage](https://docs.sel4.systems/projects/buildsystem/host-dependencies.html) and set up your
 build environment accordingly.
+
+### Retrieving the code
+
+Since libraries, build tools and the seL4 microkernel are located in git submodules, those need to be retrieved together
+with this repository.  
+If you haven't cloned the repository yet, you can add the `--recurse-submodules` flag to `git clone`.
+If you have already cloned it without this flag, you can simply issue `git submodule update --init --recursive` and
+don't need to start over and do a fresh clone.
 
 ### Initializing the build environment
 
 Builds should be done in a dedicated subdirectory.
 You're free to name the subdirectory whatever you want.
-However, we suggest naming the directory `build` or at least using the prefix `build`, because the `.gitignore` file
-excludes such directories from tracking.
+However, we suggest naming the directory `build` or at least using the prefix `build`, because the
+[`.gitignore`](./.gitignore) file excludes such directories from tracking.
 
 After you've created the build directory and entered it, set up the build system by invoking
-`../init-build.sh -DRISCV64=1 -DKernelRiscvExtD=1 -DKernelRiscvExtF=1 -DKernelSecCell=1`.
+`../init-build.sh`.
+Some sane default options are already provided in [`settings.cmake`](./settings.cmake) and thus no arguments have to be
+provided to the initialization script.
+If you want to modify the build options, either modify the necessary CMake files directly or provide explicit arguments
+on the command line, e.g., calling `../init-build.sh -DKernelRiscvExtD=0` to turn off double precision floating point
+support in the kernel.
 
 ### Building the code
 
