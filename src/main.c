@@ -92,6 +92,23 @@ int main(int argc, char *argv[]) {
     error = seL4_RISCV_RangeTable_Compact(seL4_CapInitThreadVSpace);
     ZF_LOGF_IF(error != seL4_NoError, "Failed to compact range table");
 
+    /* Retrieve the current SecDiv's ID */
+    unsigned int initial_secdiv = -1u;
+    asm(
+        "csrr %[usid], usid    \n\t"
+        : [usid] "=r" (initial_secdiv)
+        :
+    );
+    printf("Currently running in SecDiv %d\n", initial_secdiv);
+
+    /* Create and delete a SecDiv */
+    seL4_RISCV_RangeTable_AddSecDiv_t secdiv = seL4_RISCV_RangeTable_AddSecDiv(seL4_CapInitThreadVSpace);
+    ZF_LOGF_IF(secdiv.error != seL4_NoError, "Failed to create new SecDiv");
+    printf("Created new SecDiv with ID %d\n", secdiv.id);
+
+    error = seL4_RISCV_RangeTable_RemoveSecDiv(seL4_CapInitThreadVSpace, secdiv.id);
+    ZF_LOGF_IF(error != seL4_NoError, "Failed to delete SecDiv");
+
     /* Count SecDivs with write access => should be exactly one (rootserver) */
     int count = 0, perms = RT_W;
     asm(
@@ -99,7 +116,7 @@ int main(int argc, char *argv[]) {
         : [acount] "=r" (count)
         : [addr] "p" (TEST_VADDR), [aperms] "r" (perms)
     );
-    printf("Count: %d\n", count);
+    printf("Count (write on %p): %d\n", (void *)TEST_VADDR, count);
 
     /* Invalidate the first cell */
     asm(
@@ -122,43 +139,53 @@ int main(int argc, char *argv[]) {
     /* Should succeed */
     *x = 10;
 
-    /* Grant read-write-execute permissions on the code cell to another SecDiv
+    /* Grant read-write-execute permissions on the code cell to another SecDiv after creating it
        Write is necessary due to the stack also being part of this cell by default and printf trying to put data onto
        the stack */
+    secdiv = seL4_RISCV_RangeTable_AddSecDiv(seL4_CapInitThreadVSpace);
+    ZF_LOGF_IF(secdiv.error != seL4_NoError, "Failed to create new SecDiv");
+    printf("Created new SecDiv with ID %d\n", secdiv.id);
+
     perms = RT_R | RT_W | RT_X;
     asm(
-        "addi t0, zero, 2               \n\t"
-        "grant %[addr], t0, %[aperms]   \n\t"
+        "grant %[addr], %[sd], %[aperms]   \n\t"
         :
+        : [addr] "p" (&main), [sd] "r" (secdiv.id), [aperms] "r" (perms)
+    );
+    printf("After granting permissions to SecDiv %d\n", secdiv.id);
+
+    /* Count SecDivs with execute access => should be exactly two */
+    count = 0;
+    perms = RT_X;
+    asm(
+        "count %[acount], %[addr], %[aperms]"
+        : [acount] "=r" (count)
         : [addr] "p" (&main), [aperms] "r" (perms)
     );
-    printf("After granting permissions to SecDiv 2\n");
+    printf("Count (execute on %p): %d\n", (void *)&main, count);
 
     /* Switch SecDivs back and forth */
     unsigned int usid = 0;
     asm(
-        "li t0, 2               \n\t"
-        "js t0, 4               \n\t"
+        "js %[sd], 4            \n\t"
         "entry                  \n\t"
         "csrr %[ausid], usid    \n\t"
         : [ausid] "=r" (usid)
-        :
+        : [sd] "r" (secdiv.id)
     );
     printf("After switching to SecDiv %d via immediate\n", usid);
     asm(
-        "li t0, 1               \n\t"
-        "js t0, 4               \n\t"
+        "js %[sd], 4            \n\t"
         "entry                  \n\t"
         "csrr %[ausid], usid    \n\t"
         : [ausid] "=r" (usid)
-        :
+        : [sd] "r" (initial_secdiv)
     );
     printf("After switching to SecDiv %d via immediate\n", usid);
 
     asm(
-        "li t0, 2               \n\t"
-        "la t1, sdswitch1       \n\t"
-        "jrs t0, 0(t1)          \n\t"
+        "la t0, sdswitch1       \n\t"
+        "jrs %[sd], 0(t0)       \n\t"
         "nop                    \n\t"
         "nop                    \n\t"
         "nop                    \n\t"
@@ -170,13 +197,12 @@ int main(int argc, char *argv[]) {
         "entry                  \n\t"
         "csrr %[ausid], usid    \n\t"
         : [ausid] "=r" (usid)
-        :
+        : [sd] "r" (secdiv.id)
     );
     printf("After switching to SecDiv %d via register\n", usid);
     asm(
-        "li t0, 1               \n\t"
-        "la t1, sdswitch2       \n\t"
-        "jrs t0, 0(t1)          \n\t"
+        "la t0, sdswitch2       \n\t"
+        "jrs %[sd], 0(t0)       \n\t"
         "nop                    \n\t"
         "nop                    \n\t"
         "nop                    \n\t"
@@ -188,7 +214,7 @@ int main(int argc, char *argv[]) {
         "entry                  \n\t"
         "csrr %[ausid], usid    \n\t"
         : [ausid] "=r" (usid)
-        :
+        : [sd] "r" (initial_secdiv)
     );
     printf("After switching to SecDiv %d via register\n", usid);
 
