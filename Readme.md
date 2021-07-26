@@ -34,6 +34,12 @@ If you haven't cloned the repository yet, you can add the `--recurse-submodules`
 If you have already cloned it without this flag, you can simply issue `git submodule update --init --recursive` and
 don't need to start over and do a fresh clone.
 
+__Note:__ It is suggested to also run `git submodule update --init --recursive` after every `git pull`.
+This ensures that all the submodules (kernel, libraries, firmware, etc.) are in a state that we as the developers of the
+whole system envisioned and tested.
+You surely can skip this step and checkout the submodules at any commit you wish but there is obviously no guarantee
+that the system will work in such a case.
+
 ### Initializing the build environment
 
 Builds should be done in a dedicated subdirectory.
