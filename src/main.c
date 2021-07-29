@@ -13,15 +13,16 @@
 void assembly_compile_check(void) {
     /* Compile check - code should not actually be executed */
     asm volatile (
-        "js x0, 2000        \n\t"
-        "jrs x0, 1000(x0)   \n\t"
+        "js x0, 0           \n\t"
+        "jals x0, 0         \n\t"
         "jrs x0, x0         \n\t"
+        "jalrs x0, x0, x0   \n\t"
         "entry              \n\t"
         "inval x0           \n\t"
         "reval x0, x0       \n\t"
-        "grant x0, x0, x0   \n\t"
         "prot x0, x0        \n\t"
-        "tfer x0, x0, x0    \n\t"
+        "grant x0, x0, 0    \n\t"
+        "tfer x0, x0, 0     \n\t"
         "count x0, x0, x0   \n\t"
     );
 }
@@ -94,7 +95,7 @@ int main(int argc, char *argv[]) {
 
     /* Retrieve the current SecDiv's ID */
     unsigned int initial_secdiv = -1u;
-    asm(
+    asm (
         "csrr %[usid], usid    \n\t"
         : [usid] "=r" (initial_secdiv)
         :
@@ -111,15 +112,16 @@ int main(int argc, char *argv[]) {
 
     /* Count SecDivs with write access => should be exactly one (rootserver) */
     int count = 0, perms = RT_W;
-    asm(
+    asm (
         "count %[acount], %[addr], %[aperms]"
         : [acount] "=r" (count)
         : [addr] "p" (TEST_VADDR), [aperms] "r" (perms)
     );
     printf("Count (write on %p): %d\n", (void *)TEST_VADDR, count);
+    assert(1 == count);
 
     /* Invalidate the first cell */
-    asm(
+    asm volatile (
         "inval %[addr]"
         :
         : [addr] "p" (TEST_VADDR)
@@ -128,7 +130,7 @@ int main(int argc, char *argv[]) {
 
     /* Revalidate the first cell read-write */
     perms = RT_R | RT_W;
-    asm(
+    asm volatile (
         "reval %[addr], %[aperms]"
         :
         : [addr] "p" (TEST_VADDR), [aperms] "r" (perms)
@@ -146,63 +148,57 @@ int main(int argc, char *argv[]) {
     ZF_LOGF_IF(secdiv.error != seL4_NoError, "Failed to create new SecDiv");
     printf("Created new SecDiv with ID %d\n", secdiv.id);
 
-    perms = RT_R | RT_W | RT_X;
-    asm(
-        "grant %[addr], %[sd], %[aperms]   \n\t"
+    asm volatile (
+        "grant %[addr], %[sd], %[aperms]    \n\t"
         :
-        : [addr] "p" (&main), [sd] "r" (secdiv.id), [aperms] "r" (perms)
+        : [addr] "p" (&main), [sd] "r" (secdiv.id), [aperms] "i" (RT_R | RT_W | RT_X)
     );
-    printf("After granting permissions to SecDiv %d\n", secdiv.id);
+    uint64_t test = TEST_VADDR + 0x1000;
+    asm volatile (
+        "tfer %[addr], %[sd], %[aperms]    \n\t"
+        :
+        : [addr] "r" (test), [sd] "r" (secdiv.id), [aperms] "i" (RT_R | RT_W)
+    );
+    printf("After granting and transferring permissions to SecDiv %d\n", secdiv.id);
 
     /* Count SecDivs with execute access => should be exactly two */
     count = 0;
     perms = RT_X;
-    asm(
+    asm (
         "count %[acount], %[addr], %[aperms]"
         : [acount] "=r" (count)
         : [addr] "p" (&main), [aperms] "r" (perms)
     );
     printf("Count (execute on %p): %d\n", (void *)&main, count);
+    assert(2 == count);
 
     /* Switch SecDivs back and forth */
     unsigned int usid = 0;
-    asm(
-        "js %[sd], 4            \n\t"
-        "entry                  \n\t"
-        "csrr %[ausid], usid    \n\t"
-        : [ausid] "=r" (usid)
-        : [sd] "r" (secdiv.id)
-    );
-    printf("After switching to SecDiv %d via immediate\n", usid);
-    asm(
-        "js %[sd], 4            \n\t"
-        "entry                  \n\t"
-        "csrr %[ausid], usid    \n\t"
-        : [ausid] "=r" (usid)
-        : [sd] "r" (initial_secdiv)
-    );
-    printf("After switching to SecDiv %d via immediate\n", usid);
-
-    asm(
-        "la t0, sdswitch1       \n\t"
-        "jrs %[sd], 0(t0)       \n\t"
-        "nop                    \n\t"
-        "nop                    \n\t"
-        "nop                    \n\t"
-        "nop                    \n\t"
-        "nop                    \n\t"
-        "nop                    \n\t"
-        "nop                    \n"
+    uint64_t secdiv_id = secdiv.id;
+    asm volatile (
+        "js %[sd], sdswitch1    \n\t"
         "sdswitch1:             \n\t"
         "entry                  \n\t"
         "csrr %[ausid], usid    \n\t"
-        : [ausid] "=r" (usid)
-        : [sd] "r" (secdiv.id)
+        : [ausid] "=r" (usid), [sd] "+r" (secdiv_id)
+        :
     );
-    printf("After switching to SecDiv %d via register\n", usid);
-    asm(
-        "la t0, sdswitch2       \n\t"
-        "jrs %[sd], 0(t0)       \n\t"
+    printf("After switching to SecDiv %d via immediate\n", usid);
+
+    secdiv_id = initial_secdiv;
+    asm volatile (
+        "jals %[sd], sdswitch2  \n"
+        "sdswitch2:             \n\t"
+        "entry                  \n\t"
+        "csrr %[ausid], usid    \n\t"
+        : [ausid] "=r" (usid), [sd] "+r" (secdiv_id)
+        :
+    );
+    printf("After switching to SecDiv %d via register, return address would be %p\n", usid, (void *)secdiv_id);
+
+    asm volatile (
+        "la t0, sdswitch3       \n\t"
+        "jrs t0, %[sd]          \n\t"
         "nop                    \n\t"
         "nop                    \n\t"
         "nop                    \n\t"
@@ -210,17 +206,35 @@ int main(int argc, char *argv[]) {
         "nop                    \n\t"
         "nop                    \n\t"
         "nop                    \n"
-        "sdswitch2:             \n\t"
+        "sdswitch3:             \n\t"
         "entry                  \n\t"
         "csrr %[ausid], usid    \n\t"
         : [ausid] "=r" (usid)
-        : [sd] "r" (initial_secdiv)
+        : [sd] "r" (secdiv.id)
     );
     printf("After switching to SecDiv %d via register\n", usid);
+    uint64_t ret_addr = 0;
+    asm volatile (
+        "la t0, sdswitch4           \n\t"
+        "jalrs %[ret], t0, %[sd]    \n\t"
+        "nop                        \n\t"
+        "nop                        \n\t"
+        "nop                        \n\t"
+        "nop                        \n\t"
+        "nop                        \n\t"
+        "nop                        \n\t"
+        "nop                        \n"
+        "sdswitch4:                 \n\t"
+        "entry                      \n\t"
+        "csrr %[ausid], usid        \n\t"
+        : [ausid] "=r" (usid), [ret] "=r" (ret_addr)
+        : [sd] "r" (initial_secdiv)
+    );
+    printf("After switching to SecDiv %d via register, return address would be %p\n", usid, (void *)ret_addr);
 
     /* Drop write permissions on the first cell => reading should still succeed */
     perms = RT_R;
-    asm(
+    asm volatile (
         "prot %[addr], %[aperms]"
         :
         : [addr] "p" (TEST_VADDR), [aperms] "r" (perms)
