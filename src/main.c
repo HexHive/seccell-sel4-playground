@@ -6,7 +6,7 @@
 #include <sel4/sel4_arch/mapping.h>
 
 #include "alloc.h"
-#include "permissions.h"
+#include "seccells.h"
 
 #define TEST_VADDR 0xA000000
 
@@ -80,6 +80,9 @@ int main(int argc, char *argv[]) {
                                  seL4_ReadWrite, seL4_RISCV_Default_VMAttributes);
     ZF_LOGF_IF(error != seL4_NoError, "Failed to map range");
 
+    error = seL4_RISCV_RangeTable_Compact(seL4_CapInitThreadVSpace);
+    ZF_LOGF_IF(error != seL4_NoError, "Failed to compact range table");
+
     /* Write to the range we mapped */
     *x = 5;
     printf("Set x to 5\n");
@@ -90,16 +93,10 @@ int main(int argc, char *argv[]) {
     printf("Read *(&x + 0x2000): %lu\n", *(seL4_Word *)(TEST_VADDR + 0x2000));
     printf("Read *(&x + 0x3000): %lu\n", *(seL4_Word *)(TEST_VADDR + 0x3000));
 
-    error = seL4_RISCV_RangeTable_Compact(seL4_CapInitThreadVSpace);
-    ZF_LOGF_IF(error != seL4_NoError, "Failed to compact range table");
 
     /* Retrieve the current SecDiv's ID */
     unsigned int initial_secdiv = -1u;
-    asm (
-        "csrr %[usid], usid    \n\t"
-        : [usid] "=r" (initial_secdiv)
-        :
-    );
+    csrr_usid(initial_secdiv);
     printf("Currently running in SecDiv %d\n", initial_secdiv);
 
     /* Create and delete a SecDiv */
@@ -111,30 +108,18 @@ int main(int argc, char *argv[]) {
     ZF_LOGF_IF(error != seL4_NoError, "Failed to delete SecDiv");
 
     /* Count SecDivs with write access => should be exactly one (rootserver) */
-    int count = 0, perms = RT_W;
-    asm (
-        "count %[acount], %[addr], %[aperms]"
-        : [acount] "=r" (count)
-        : [addr] "p" (TEST_VADDR), [aperms] "r" (perms)
-    );
-    printf("Count (write on %p): %d\n", (void *)TEST_VADDR, count);
+    int count = 0;
+    uint64_t test_vaddr = TEST_VADDR;
+    count(count, test_vaddr, RT_W);
+    printf("Count (write on %p): %d\n", (void *)test_vaddr, count);
     assert(1 == count);
 
     /* Invalidate the first cell */
-    asm volatile (
-        "inval %[addr]"
-        :
-        : [addr] "p" (TEST_VADDR)
-    );
+    inval(test_vaddr);
     printf("After invalidation\n");
 
     /* Revalidate the first cell read-write */
-    perms = RT_R | RT_W;
-    asm volatile (
-        "reval %[addr], %[aperms]"
-        :
-        : [addr] "p" (TEST_VADDR), [aperms] "r" (perms)
-    );
+    reval(test_vaddr, RT_R | RT_W);
     printf("After revalidation: ");
     printf("Read x: %lu\n", *x);
     printf("Write x = 10\n");
@@ -148,97 +133,48 @@ int main(int argc, char *argv[]) {
     ZF_LOGF_IF(secdiv.error != seL4_NoError, "Failed to create new SecDiv");
     printf("Created new SecDiv with ID %d\n", secdiv.id);
 
-    asm volatile (
-        "grant %[addr], %[sd], %[aperms]    \n\t"
-        :
-        : [addr] "p" (&main), [sd] "r" (secdiv.id), [aperms] "i" (RT_R | RT_W | RT_X)
-    );
-    uint64_t test = TEST_VADDR + 0x1000;
-    asm volatile (
-        "tfer %[addr], %[sd], %[aperms]    \n\t"
-        :
-        : [addr] "r" (test), [sd] "r" (secdiv.id), [aperms] "i" (RT_R | RT_W)
-    );
+    uint64_t main_addr = (uint64_t)&main;
+    grant(main_addr, secdiv.id, RT_R | RT_W | RT_X);
+    test_vaddr += 0x1000;
+    tfer(test_vaddr, secdiv.id, RT_R | RT_W);
     printf("After granting and transferring permissions to SecDiv %d\n", secdiv.id);
 
     /* Count SecDivs with execute access => should be exactly two */
-    count = 0;
-    perms = RT_X;
-    asm (
-        "count %[acount], %[addr], %[aperms]"
-        : [acount] "=r" (count)
-        : [addr] "p" (&main), [aperms] "r" (perms)
-    );
-    printf("Count (execute on %p): %d\n", (void *)&main, count);
+    count(count, main_addr, RT_X);
+    printf("Count (execute on %p): %d\n", (void *)main_addr, count);
     assert(2 == count);
 
     /* Switch SecDivs back and forth */
-    unsigned int usid = 0;
+    unsigned int usid = -1u;
     uint64_t secdiv_id = secdiv.id;
-    asm volatile (
-        "js %[sd], sdswitch1    \n\t"
-        "sdswitch1:             \n\t"
-        "entry                  \n\t"
-        "csrr %[ausid], usid    \n\t"
-        : [ausid] "=r" (usid), [sd] "+r" (secdiv_id)
-        :
-    );
+    jals(secdiv_id, sd1);
+    entry(sd1);
+    csrr_usid(usid);
     printf("After switching to SecDiv %d via immediate\n", usid);
 
     secdiv_id = initial_secdiv;
-    asm volatile (
-        "jals %[sd], sdswitch2  \n"
-        "sdswitch2:             \n\t"
-        "entry                  \n\t"
-        "csrr %[ausid], usid    \n\t"
-        : [ausid] "=r" (usid), [sd] "+r" (secdiv_id)
-        :
-    );
-    printf("After switching to SecDiv %d via register, return address would be %p\n", usid, (void *)secdiv_id);
-
-    asm volatile (
-        "la t0, sdswitch3       \n\t"
-        "jrs t0, %[sd]          \n\t"
-        "nop                    \n\t"
-        "nop                    \n\t"
-        "nop                    \n\t"
-        "nop                    \n\t"
-        "nop                    \n\t"
-        "nop                    \n\t"
-        "nop                    \n"
-        "sdswitch3:             \n\t"
-        "entry                  \n\t"
-        "csrr %[ausid], usid    \n\t"
-        : [ausid] "=r" (usid)
-        : [sd] "r" (secdiv.id)
-    );
+    jals(secdiv_id, sd2);
+    entry(sd2);
+    csrr_usid(usid);
     printf("After switching to SecDiv %d via register\n", usid);
-    uint64_t ret_addr = 0;
-    asm volatile (
-        "la t0, sdswitch4           \n\t"
-        "jalrs %[ret], t0, %[sd]    \n\t"
-        "nop                        \n\t"
-        "nop                        \n\t"
-        "nop                        \n\t"
-        "nop                        \n\t"
-        "nop                        \n\t"
-        "nop                        \n\t"
-        "nop                        \n"
-        "sdswitch4:                 \n\t"
-        "entry                      \n\t"
-        "csrr %[ausid], usid        \n\t"
-        : [ausid] "=r" (usid), [ret] "=r" (ret_addr)
-        : [sd] "r" (initial_secdiv)
-    );
-    printf("After switching to SecDiv %d via register, return address would be %p\n", usid, (void *)ret_addr);
+
+    uint64_t ret_addr = 0, dest_addr = (uint64_t)&&sd3;
+    jalrs(ret_addr, dest_addr, secdiv.id);
+sd3:
+    entry(_sd3);
+    csrr_usid(usid);
+    printf("After switching to SecDiv %d via register\n", usid);
+
+    dest_addr = (uint64_t)&&sd4;
+    jalrs(ret_addr, dest_addr, initial_secdiv);
+sd4:
+    entry(_sd4);
+    csrr_usid(usid);
+    printf("After switching to SecDiv %d via register\n", usid);
 
     /* Drop write permissions on the first cell => reading should still succeed */
-    perms = RT_R;
-    asm volatile (
-        "prot %[addr], %[aperms]"
-        :
-        : [addr] "p" (TEST_VADDR), [aperms] "r" (perms)
-    );
+    test_vaddr = TEST_VADDR;
+    prot(test_vaddr, RT_R);
     printf("After dropping permissions: ");
     printf("Read x: %lu\n", *x);
     printf("Write x = 20\n");
