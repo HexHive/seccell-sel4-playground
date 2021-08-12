@@ -85,9 +85,6 @@ void permission_test(seL4_BootInfo *info) {
                                  seL4_ReadWrite, seL4_RISCV_Default_VMAttributes);
     ZF_LOGF_IF(error != seL4_NoError, "Failed to map range");
 
-    error = seL4_RISCV_RangeTable_Compact(seL4_CapInitThreadVSpace);
-    ZF_LOGF_IF(error != seL4_NoError, "Failed to compact range table");
-
     /* Check write access */
     *x = 5;
     printf("Set %p to 5\n", x);
@@ -152,8 +149,6 @@ void permission_test(seL4_BootInfo *info) {
         error = seL4_RISCV_Range_Unmap(ranges[0]);
         ZF_LOGF_IF(error != seL4_NoError, "Failed to unmap range");
     }
-    error = seL4_RISCV_RangeTable_Compact(seL4_CapInitThreadVSpace);
-    ZF_LOGF_IF(error != seL4_NoError, "Failed to compact range table");
 }
 
 void sdswitch_test(void) {
