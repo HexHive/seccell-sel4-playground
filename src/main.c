@@ -3,6 +3,7 @@
 #include <sel4platsupport/bootinfo.h>
 #include <sel4platsupport/platsupport.h>
 #include <utils/util.h>
+#include <sel4utils/util.h>
 #include <sel4/sel4_arch/mapping.h>
 
 #include "alloc.h"
@@ -19,10 +20,16 @@
 #define NUM_RANGES 4
 #define NUM_SECDIVS 2
 
+void print_test(void);
 void permission_test(seL4_BootInfo *info);
 void sdswitch_test(void);
-void __attribute__((naked)) jump_target(void);
+void jump_target(void);
+void thread_creation_test(seL4_BootInfo *info);
+void thread_target(void);
 void compile_test(void);
+
+seL4_Word stack[4096];
+seL4_CPtr tcb;
 
 int main(int argc, char *argv[]) {
     /* Parse the location of the seL4_BootInfo data structure from
@@ -35,12 +42,16 @@ int main(int argc, char *argv[]) {
     }
     debug_print_bootinfo(info);
 
+    /* Test availability of terminal/serial output */
+    RUN_TEST(print_test);
     /* Test mapping and unmapping of ranges, granting and revoking permissions to/from SecDivs */
     RUN_TEST(permission_test, info);
     /* Test switching between SecDivs */
     RUN_TEST(sdswitch_test);
+    /* Test creating a new process */
+    RUN_TEST(thread_creation_test, info);
 
-    printf("Success!\n");
+    printf("Success!\n\n");
 
     /* Suspend the root server - isn't needed anymore */
     seL4_TCB_Suspend(seL4_CapInitThreadTCB);
@@ -50,6 +61,10 @@ int main(int argc, char *argv[]) {
     RUN_TEST(compile_test);
 
     return 0;
+}
+
+void print_test(void) {
+    printf("Hello world!\n");
 }
 
 void permission_test(seL4_BootInfo *info) {
@@ -224,6 +239,51 @@ void __attribute__((naked)) jump_target(void) {
         "addi sp, sp, 8 \n\t"
         "ret"
         );
+}
+
+void thread_creation_test(seL4_BootInfo *info) {
+    seL4_Word error;
+
+    tcb = alloc_object(info, seL4_TCBObject, seL4_TCBBits);
+
+    error = seL4_TCB_Configure(
+        tcb,                        /* TCB cap      */
+        seL4_CapNull,               /* EP cap       */
+        seL4_CapInitThreadCNode,    /* CSpace cap   */
+        seL4_NilData,               /* CSpace data  */
+        seL4_CapInitThreadVSpace,   /* VSpace cap   */
+        seL4_NilData,               /* VSpace data  */
+        (seL4_Word) seL4_Null,      /* IPC buf ptr  */
+        seL4_CapInitThreadIPCBuffer /* IPC buf cap  */
+    );
+    ZF_LOGF_IF(error != seL4_NoError, "Failed to configure new TCB");
+
+    /* Setting priority to minimal ensures the thread only starts running once the original thread gives up control */
+    error = seL4_TCB_SetPriority(tcb, seL4_CapInitThreadTCB, seL4_MinPrio);
+    ZF_LOGF_IF(error != seL4_NoError, "Failed to set the priority for new TCB object");
+
+    seL4_UserContext ctx = {0};
+
+    /* Registers are empty, only set stack/thread pointer and PC */
+    ctx.pc = (seL4_Word)(&thread_target);
+    ctx.sp = (seL4_Word)(stack) + sizeof(stack);
+    ctx.tp = (seL4_Word)(stack) + sizeof(stack);
+
+    error = seL4_TCB_WriteRegisters(tcb, 0, 0, 3, &ctx);
+    ZF_LOGF_IF(error != seL4_NoError, "CPU context for new thread could not be set");
+
+    /* Schedule the new thread */
+    error = seL4_TCB_Resume(tcb);
+    ZF_LOGF_IF(error != seL4_NoError, "Thread could not be scheduled");
+}
+
+void thread_target(void) {
+    unsigned int usid;
+    csrr_usid(usid);
+    printf("Executing in a new thread\n");
+    RUN_TEST(print_test);
+    /* Suspend the new thread - not needed anymore */
+    seL4_TCB_Suspend(tcb);
 }
 
 void compile_test(void) {
