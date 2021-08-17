@@ -73,7 +73,7 @@ void permission_test(seL4_BootInfo *info) {
 
     /* Allocate and map ranges read-only */
     for (int i = 0; i < NUM_RANGES; i++) {
-        ranges[i] = alloc_object(info, seL4_RISCV_RangeObject, seL4_MinRangeBits);
+        ranges[i] = alloc_object(info, seL4_RISCV_RangeObject, BIT(seL4_MinRangeBits));
         /* Map a read-only 4k range at BASE_VADDR + (i * 0x1000)  */
         uint64_t vaddr = BASE_VADDR + (i * 0x1000);
         error = seL4_RISCV_Range_Map(ranges[i], seL4_CapInitThreadVSpace, vaddr, seL4_CanRead,
