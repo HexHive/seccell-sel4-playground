@@ -16,6 +16,7 @@ add_executable(
     seccell-test
     src/main.c
     src/alloc.c
+    src/scthreads.c
 )
 
 # Add the global include directory

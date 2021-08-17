@@ -7,6 +7,7 @@
 #include <sel4/sel4_arch/mapping.h>
 
 #include "alloc.h"
+#include "scthreads.h"
 #include "seccells.h"
 
 #define RUN_TEST(func, args...)                                                         \
@@ -16,16 +17,18 @@
         printf("###################### Finished " #func " ######################\n\n"); \
     } while (0)
 
-#define BASE_VADDR 0xA000000
-#define NUM_RANGES 4
+#define BASE_VADDR    0xA000000
+#define CONTEXT_VADDR 0xF000000
+#define NUM_RANGES  4
 #define NUM_SECDIVS 2
 
 void print_test(void);
 void permission_test(seL4_BootInfo *info);
 void sdswitch_test(void);
 void jump_target(void);
-void thread_creation_test(seL4_BootInfo *info);
+void kernel_thread_creation_test(seL4_BootInfo *info);
 void thread_target(void);
+void userspace_thread_creation_test(seL4_BootInfo *info);
 void compile_test(void);
 
 seL4_Word stack[4096];
@@ -48,8 +51,10 @@ int main(int argc, char *argv[]) {
     RUN_TEST(permission_test, info);
     /* Test switching between SecDivs */
     RUN_TEST(sdswitch_test);
-    /* Test creating a new process */
-    RUN_TEST(thread_creation_test, info);
+    /* Test creating a new kernel thread */
+    RUN_TEST(kernel_thread_creation_test, info);
+    /* Test creating new userspace threads */
+    RUN_TEST(userspace_thread_creation_test, info);
 
     printf("Success!\n\n");
 
@@ -241,7 +246,7 @@ void __attribute__((naked)) jump_target(void) {
         );
 }
 
-void thread_creation_test(seL4_BootInfo *info) {
+void kernel_thread_creation_test(seL4_BootInfo *info) {
     seL4_Word error;
 
     tcb = alloc_object(info, seL4_TCBObject, seL4_TCBBits);
@@ -284,6 +289,26 @@ void thread_target(void) {
     RUN_TEST(print_test);
     /* Suspend the new thread - not needed anymore */
     seL4_TCB_Suspend(tcb);
+}
+
+void userspace_thread_creation_test(seL4_BootInfo *info) {
+    seL4_Error error;
+    seL4_RISCV_RangeTable_AddSecDiv_t secdivs[NUM_SECDIVS];
+
+    /* Create new SecDivs */
+    for (int i = 0; i < NUM_SECDIVS; i++) {
+        secdivs[i] = seL4_RISCV_RangeTable_AddSecDiv(seL4_CapInitThreadVSpace);
+        ZF_LOGF_IF(secdivs[i].error != seL4_NoError, "Failed to create new SecDiv");
+        printf("Created new SecDiv with ID %d\n", secdivs[i].id);
+    }
+
+    scthreads_init_contexts(info, (void *)CONTEXT_VADDR, secdivs[NUM_SECDIVS - 1].id);
+
+    /* Tear down SecDivs */
+    for (int i = 0; i < NUM_SECDIVS; i++) {
+        error = seL4_RISCV_RangeTable_RemoveSecDiv(seL4_CapInitThreadVSpace, secdivs[i].id);
+        ZF_LOGF_IF(error != seL4_NoError, "Failed to delete SecDiv");
+    }
 }
 
 void compile_test(void) {
