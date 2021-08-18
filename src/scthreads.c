@@ -24,7 +24,7 @@ void scthreads_init_contexts(seL4_BootInfo *info, void *base_address, unsigned i
     /* Map context list */
     seL4_CPtr context_list = alloc_object(info, seL4_RISCV_RangeObject, context_list_size);
     error = seL4_RISCV_Range_Map(context_list, seL4_CapInitThreadVSpace, vaddr, seL4_ReadWrite,
-                                 seL4_RISCV_Default_VMAttributes);
+                                 seL4_RISCV_ExecuteNever);
     ZF_LOGF_IF(error != seL4_NoError, "Failed to map context list @ %p", (void *)vaddr);
     /* Point global pointer to context list memory area */
     contexts = (seL4_UserContext **)vaddr;
@@ -35,7 +35,7 @@ void scthreads_init_contexts(seL4_BootInfo *info, void *base_address, unsigned i
         /* Allocate and map context */
         seL4_CPtr context = alloc_object(info, seL4_RISCV_RangeObject, context_size);
         error = seL4_RISCV_Range_Map(context, seL4_CapInitThreadVSpace, vaddr, seL4_ReadWrite,
-                                     seL4_RISCV_Default_VMAttributes);
+                                     seL4_RISCV_ExecuteNever);
         ZF_LOGF_IF(error != seL4_NoError, "Failed to map context @ %p", (void *)vaddr);
         /* Initialize context */
         seL4_UserContext *ctx = (seL4_UserContext *)vaddr;
@@ -46,7 +46,7 @@ void scthreads_init_contexts(seL4_BootInfo *info, void *base_address, unsigned i
         /* Allocate and map stack */
         seL4_CPtr stack = alloc_object(info, seL4_RISCV_RangeObject, stack_size);
         error = seL4_RISCV_Range_Map(stack, seL4_CapInitThreadVSpace, vaddr, seL4_ReadWrite,
-                                     seL4_RISCV_Default_VMAttributes);
+                                     seL4_RISCV_ExecuteNever);
         ZF_LOGF_IF(error != seL4_NoError, "Failed to map stack @ %p", (void *)vaddr);
         /* Assign stack to context (stack top (i.e., last accessible word) since stack grows downwards) */
         ctx->sp = vaddr + stack_size - sizeof(seL4_Word);
