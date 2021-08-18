@@ -189,34 +189,33 @@ void sdswitch_test(void) {
 
     /* Switch SecDivs back and forth */
     unsigned int usid;
-    register uint64_t secdiv_id asm("ra") = secdivs[0].id;
-    grant(&sdswitch_test, secdiv_id, RT_R | RT_W | RT_X);
-    jals(secdiv_id, sd1);
-    entry(sd1);
+    grant(&sdswitch_test, secdivs[0].id, RT_R | RT_W | RT_X);
+    jals(secdivs[0].id, sd1);
+sd1:
+    entry();
     csrr_usid(usid);
     printf("After switching to SecDiv %d via immediate\n", usid);
 
-    secdiv_id = initial_secdiv;
-    jals(secdiv_id, sd2);
-    entry(sd2);
+    jals(initial_secdiv, sd2);
+sd2:
+    entry();
     csrr_usid(usid);
     printf("After switching to SecDiv %d via immediate\n", usid);
 
-    uint64_t ret_addr;
+    register uint64_t ret_addr asm("ra");
     jalrs(ret_addr, &&sd3, secdivs[0].id);
 sd3:
-    entry(_sd3);
+    entry();
     csrr_usid(usid);
     printf("After switching to SecDiv %d via register\n", usid);
 
     /* Switch SecDiv into another function and return from it */
-    secdiv_id = secdivs[1].id;
-    grant(&jump_target, secdiv_id, RT_R | RT_W | RT_X);
-    jals(secdiv_id, _jump_target);
+    grant(&jump_target, secdivs[1].id, RT_R | RT_W | RT_X);
+    jalrs(ret_addr, &jump_target, secdivs[1].id);
 
     jalrs(ret_addr, &&sd4, initial_secdiv);
 sd4:
-    entry(_sd4);
+    entry();
     csrr_usid(usid);
     printf("After switching to SecDiv %d via register\n", usid);
 
@@ -228,7 +227,7 @@ sd4:
 }
 
 void __attribute__((naked)) jump_target(void) {
-    entry(_jump_target);
+    entry();
     /* Prologue */
     asm (
         "addi sp, sp, -8 \n\t"
