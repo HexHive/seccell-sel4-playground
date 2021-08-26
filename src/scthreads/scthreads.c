@@ -1,11 +1,15 @@
 #include <string.h>
 #include <utils/util.h>
+#include <sel4debug/arch/registers.h>
 
 #include "scthreads.h"
 #include "alloc.h"
 #include "seccells.h"
 
 seL4_UserContext **contexts = 0;
+
+extern void scthreads_save_context(void *cont_addr);
+extern void scthreads_restore_context(void);
 
 void scthreads_init_contexts(seL4_BootInfo *info, void *base_address, unsigned int secdiv_num) {
     /* Currently, only SecDiv 1 (the initial SecDiv) is allowed to initialize the threading contexts */
@@ -66,3 +70,16 @@ void scthreads_init_contexts(seL4_BootInfo *info, void *base_address, unsigned i
     }
 }
 
+seL4_UserContext *scthreads_get_current_context(void) {
+    seL4_Word usid;
+    csrr_usid(usid);
+    return contexts[usid];
+}
+
+void scthreads_switch(seL4_Word usid, void *cont_addr) {
+    scthreads_save_context(cont_addr);
+    jals(usid, thread_entry);
+thread_entry:
+    entry();
+    scthreads_restore_context();
+}
