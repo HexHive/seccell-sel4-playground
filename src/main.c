@@ -20,8 +20,10 @@
 #define BASE_VADDR    0xA000000
 #define CONTEXT_VADDR 0xF000000
 #define NUM_RANGES  4
-#define NUM_SECDIVS 2
+#define NUM_SECDIVS 4
 
+void setup_secdivs(void);
+void revoke_secdivs(void);
 void print_test(void);
 void permission_test(seL4_BootInfo *info);
 void sdswitch_test(void);
@@ -34,6 +36,8 @@ void compile_test(void);
 seL4_Word stack[4096];
 seL4_CPtr tcb;
 
+seL4_RISCV_RangeTable_AddSecDiv_t secdivs[NUM_SECDIVS];
+
 int main(int argc, char *argv[]) {
     /* Parse the location of the seL4_BootInfo data structure from
        the environment variables set up by the default crt0.S */
@@ -45,6 +49,9 @@ int main(int argc, char *argv[]) {
     }
     debug_print_bootinfo(info);
 
+    /* Create and initialize SecDivs for later use */
+    setup_secdivs();
+
     /* Test availability of terminal/serial output */
     RUN_TEST(print_test);
     /* Test mapping and unmapping of ranges, granting and revoking permissions to/from SecDivs */
@@ -55,6 +62,9 @@ int main(int argc, char *argv[]) {
     RUN_TEST(kernel_thread_creation_test, info);
     /* Test creating new userspace threads */
     RUN_TEST(userspace_thread_creation_test, info);
+
+    /* Revoke SecDiv permissions */
+    revoke_secdivs();
 
     printf("Success!\n\n");
 
@@ -68,12 +78,32 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
+void setup_secdivs(void) {
+    /* Create new SecDivs */
+    for (int i = 0; i < NUM_SECDIVS; i++) {
+        secdivs[i] = seL4_RISCV_RangeTable_AddSecDiv(seL4_CapInitThreadVSpace);
+        ZF_LOGF_IF(secdivs[i].error != seL4_NoError, "Failed to create new SecDiv");
+        printf("Created new SecDiv with ID %d\n", secdivs[i].id);
+    }
+}
+
+void revoke_secdivs(void) {
+    seL4_Error error;
+    /* Revoke SecDiv permissions */
+    for (int i = 0; i < NUM_SECDIVS; i++) {
+        error = seL4_RISCV_RangeTable_RevokeSecDiv(seL4_CapInitThreadVSpace, secdivs[i].id);
+        ZF_LOGF_IF(error != seL4_NoError, "Failed to revoke SecDiv permissions");
+    }
+}
+
 void print_test(void) {
     printf("Hello world!\n");
 }
 
 void permission_test(seL4_BootInfo *info) {
     seL4_Error error;
+    /* At least two ranges are needed further down in the test */
+    assert(NUM_RANGES >= 2);
     seL4_CPtr ranges[NUM_RANGES];
 
     /* Allocate and map ranges read-only */
@@ -136,12 +166,10 @@ void permission_test(seL4_BootInfo *info) {
     csrr_usid(initial_secdiv);
     printf("Currently running in SecDiv %d\n", initial_secdiv);
 
-    /* Grant read-write-execute permissions on the code cell to another SecDiv after creating it
+    /* Grant read-write-execute permissions on the code cell to another SecDiv
        Write is necessary due to the stack also being part of this cell by default and printf trying to put data onto
        the stack */
-    seL4_RISCV_RangeTable_AddSecDiv_t secdiv = seL4_RISCV_RangeTable_AddSecDiv(seL4_CapInitThreadVSpace);
-    ZF_LOGF_IF(secdiv.error != seL4_NoError, "Failed to create new SecDiv");
-    printf("Created new SecDiv with ID %d\n", secdiv.id);
+    seL4_RISCV_RangeTable_AddSecDiv_t secdiv = secdivs[NUM_SECDIVS - 1];
 
     grant(&main, secdiv.id, RT_R | RT_W | RT_X);
     tfer(BASE_VADDR + 0x1000, secdiv.id, RT_R);
@@ -160,9 +188,9 @@ void permission_test(seL4_BootInfo *info) {
     /* Should fail */
     *x = 20;
 
-    /* Revoke permissions for the SecDiv created earlier on */
+    /* Revoke permissions for the SecDiv granted earlier on */
     error = seL4_RISCV_RangeTable_RevokeSecDiv(seL4_CapInitThreadVSpace, secdiv.id);
-    ZF_LOGF_IF(error != seL4_NoError, "Failed to delete SecDiv");
+    ZF_LOGF_IF(error != seL4_NoError, "Failed to revoke SecDiv permissions");
 
     /* Unmap previously mapped ranges */
     for (int i = 0; i < NUM_RANGES; i++) {
@@ -173,19 +201,14 @@ void permission_test(seL4_BootInfo *info) {
 
 void sdswitch_test(void) {
     seL4_Error error;
-    seL4_RISCV_RangeTable_AddSecDiv_t secdivs[NUM_SECDIVS];
+
+    /* At least 2 additional SecDivs are needed further down in the test */
+    assert(NUM_SECDIVS >= 2);
 
     /* Retrieve the current SecDiv's ID */
     unsigned int initial_secdiv;
     csrr_usid(initial_secdiv);
     printf("Currently running in SecDiv %d\n", initial_secdiv);
-
-    /* Create new SecDivs to switch to */
-    for (int i = 0; i < NUM_SECDIVS; i++) {
-        secdivs[i] = seL4_RISCV_RangeTable_AddSecDiv(seL4_CapInitThreadVSpace);
-        ZF_LOGF_IF(secdivs[i].error != seL4_NoError, "Failed to create new SecDiv");
-        printf("Created new SecDiv with ID %d\n", secdivs[i].id);
-    }
 
     /* Switch SecDivs back and forth */
     unsigned int usid;
@@ -219,11 +242,7 @@ sd4:
     csrr_usid(usid);
     printf("After switching to SecDiv %d via register\n", usid);
 
-    /* Tear down SecDivs */
-    for (int i = 0; i < NUM_SECDIVS; i++) {
-        error = seL4_RISCV_RangeTable_RevokeSecDiv(seL4_CapInitThreadVSpace, secdivs[i].id);
-        ZF_LOGF_IF(error != seL4_NoError, "Failed to delete SecDiv");
-    }
+    revoke_secdivs();
 }
 
 void __attribute__((naked)) jump_target(void) {
@@ -292,22 +311,15 @@ void thread_target(void) {
 
 void userspace_thread_creation_test(seL4_BootInfo *info) {
     seL4_Error error;
-    seL4_RISCV_RangeTable_AddSecDiv_t secdivs[NUM_SECDIVS];
 
-    /* Create new SecDivs */
-    for (int i = 0; i < NUM_SECDIVS; i++) {
-        secdivs[i] = seL4_RISCV_RangeTable_AddSecDiv(seL4_CapInitThreadVSpace);
-        ZF_LOGF_IF(secdivs[i].error != seL4_NoError, "Failed to create new SecDiv");
-        printf("Created new SecDiv with ID %d\n", secdivs[i].id);
-    }
+    /* At least 1 additional SecDiv is needed further down in the test */
+    assert(NUM_SECDIVS >= 1);
+
 
     scthreads_init_contexts(info, (void *)CONTEXT_VADDR, secdivs[NUM_SECDIVS - 1].id);
 
-    /* Tear down SecDivs */
-    for (int i = 0; i < NUM_SECDIVS; i++) {
-        error = seL4_RISCV_RangeTable_RevokeSecDiv(seL4_CapInitThreadVSpace, secdivs[i].id);
-        ZF_LOGF_IF(error != seL4_NoError, "Failed to delete SecDiv");
-    }
+    /* Revoke SecDiv permissions */
+    revoke_secdivs();
 }
 
 void compile_test(void) {
