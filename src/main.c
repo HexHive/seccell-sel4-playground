@@ -160,8 +160,8 @@ void permission_test(seL4_BootInfo *info) {
     /* Should fail */
     *x = 20;
 
-    /* Remove the SecDiv created earlier on */
-    error = seL4_RISCV_RangeTable_RemoveSecDiv(seL4_CapInitThreadVSpace, secdiv.id);
+    /* Revoke permissions for the SecDiv created earlier on */
+    error = seL4_RISCV_RangeTable_RevokeSecDiv(seL4_CapInitThreadVSpace, secdiv.id);
     ZF_LOGF_IF(error != seL4_NoError, "Failed to delete SecDiv");
 
     /* Unmap previously mapped ranges */
@@ -221,7 +221,7 @@ sd4:
 
     /* Tear down SecDivs */
     for (int i = 0; i < NUM_SECDIVS; i++) {
-        error = seL4_RISCV_RangeTable_RemoveSecDiv(seL4_CapInitThreadVSpace, secdivs[i].id);
+        error = seL4_RISCV_RangeTable_RevokeSecDiv(seL4_CapInitThreadVSpace, secdivs[i].id);
         ZF_LOGF_IF(error != seL4_NoError, "Failed to delete SecDiv");
     }
 }
@@ -305,7 +305,7 @@ void userspace_thread_creation_test(seL4_BootInfo *info) {
 
     /* Tear down SecDivs */
     for (int i = 0; i < NUM_SECDIVS; i++) {
-        error = seL4_RISCV_RangeTable_RemoveSecDiv(seL4_CapInitThreadVSpace, secdivs[i].id);
+        error = seL4_RISCV_RangeTable_RevokeSecDiv(seL4_CapInitThreadVSpace, secdivs[i].id);
         ZF_LOGF_IF(error != seL4_NoError, "Failed to delete SecDiv");
     }
 }
