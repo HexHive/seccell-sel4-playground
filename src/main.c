@@ -29,8 +29,9 @@ void permission_test(seL4_BootInfo *info);
 void sdswitch_test(void);
 void jump_target(void);
 void kernel_thread_creation_test(seL4_BootInfo *info);
-void thread_target(void);
+void kernel_thread_target(void);
 void userspace_thread_creation_test(seL4_BootInfo *info);
+void user_thread_target(void);
 void compile_test(void);
 
 seL4_Word stack[4096];
@@ -290,7 +291,7 @@ void kernel_thread_creation_test(seL4_BootInfo *info) {
     seL4_UserContext ctx = {0};
 
     /* Registers are empty, only set stack/thread pointer and PC */
-    ctx.pc = (seL4_Word)(&thread_target);
+    ctx.pc = (seL4_Word)(&kernel_thread_target);
     ctx.sp = (seL4_Word)(stack) + sizeof(stack);
     ctx.tp = (seL4_Word)(stack) + sizeof(stack);
 
@@ -302,13 +303,18 @@ void kernel_thread_creation_test(seL4_BootInfo *info) {
     ZF_LOGF_IF(error != seL4_NoError, "Thread could not be scheduled");
 }
 
-void thread_target(void) {
-    unsigned int usid;
-    csrr_usid(usid);
-    printf("Executing in a new thread\n");
+void kernel_thread_target(void) {
+    printf("Executing in a new kernel thread\n");
     RUN_TEST(print_test);
     /* Suspend the new thread - not needed anymore */
     seL4_TCB_Suspend(tcb);
+}
+
+void user_thread_target(void) {
+    printf("Executing in a new userspace thread\n");
+    RUN_TEST(print_test);
+    /* Switch back to initial SecDiv */
+    scthreads_switch(secdivs[0].id);
 }
 
 void userspace_thread_creation_test(seL4_BootInfo *info) {
@@ -317,8 +323,14 @@ void userspace_thread_creation_test(seL4_BootInfo *info) {
     /* At least 1 additional SecDiv is needed further down in the test */
     assert(NUM_SECDIVS > 1);
 
-    scthreads_init_contexts(info, (void *)CONTEXT_VADDR, secdivs[NUM_SECDIVS - 1].id);
+    /* Pass NUM_SECDIVS + 1 because the init function expects the number of SecDivs including the supervisor SecDiv */
+    scthreads_init_contexts(info, (void *)CONTEXT_VADDR, NUM_SECDIVS + 1);
 
+    scthreads_set_thread_entry(secdivs[NUM_SECDIVS - 1].id, &user_thread_target);
+
+    scthreads_switch(secdivs[NUM_SECDIVS - 1].id);
+
+    printf("Executing in initial userspace thread\n");
     /* Revoke SecDiv permissions */
     revoke_secdivs();
 }
