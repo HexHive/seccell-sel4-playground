@@ -19,8 +19,8 @@
 
 #define BASE_VADDR    0xA000000
 #define CONTEXT_VADDR 0xF000000
-#define NUM_RANGES  4
-#define NUM_SECDIVS 4
+#define NUM_RANGES  4   /* Number of additionally created ranges for tests */
+#define NUM_SECDIVS 4   /* Number of userspace SecDivs (including the initially running SecDiv) */
 
 void setup_secdivs(void);
 void revoke_secdivs(void);
@@ -79,8 +79,10 @@ int main(int argc, char *argv[]) {
 }
 
 void setup_secdivs(void) {
+    /* Save current SecDiv ID => probably the initial SecDiv anyway */
+    csrr_usid(secdivs[0].id);
     /* Create new SecDivs */
-    for (int i = 0; i < NUM_SECDIVS; i++) {
+    for (int i = 1; i < NUM_SECDIVS; i++) {
         secdivs[i] = seL4_RISCV_RangeTable_AddSecDiv(seL4_CapInitThreadVSpace);
         ZF_LOGF_IF(secdivs[i].error != seL4_NoError, "Failed to create new SecDiv");
         printf("Created new SecDiv with ID %d\n", secdivs[i].id);
@@ -89,8 +91,8 @@ void setup_secdivs(void) {
 
 void revoke_secdivs(void) {
     seL4_Error error;
-    /* Revoke SecDiv permissions */
-    for (int i = 0; i < NUM_SECDIVS; i++) {
+    /* Revoke SecDiv permissions (not for initial SecDiv => start at index 1) */
+    for (int i = 1; i < NUM_SECDIVS; i++) {
         error = seL4_RISCV_RangeTable_RevokeSecDiv(seL4_CapInitThreadVSpace, secdivs[i].id);
         ZF_LOGF_IF(error != seL4_NoError, "Failed to revoke SecDiv permissions");
     }
@@ -203,7 +205,7 @@ void sdswitch_test(void) {
     seL4_Error error;
 
     /* At least 2 additional SecDivs are needed further down in the test */
-    assert(NUM_SECDIVS >= 2);
+    assert(NUM_SECDIVS > 2);
 
     /* Retrieve the current SecDiv's ID */
     unsigned int initial_secdiv;
@@ -212,8 +214,8 @@ void sdswitch_test(void) {
 
     /* Switch SecDivs back and forth */
     unsigned int usid;
-    grant(&sdswitch_test, secdivs[0].id, RT_R | RT_W | RT_X);
-    jals(secdivs[0].id, sd1);
+    grant(&sdswitch_test, secdivs[1].id, RT_R | RT_W | RT_X);
+    jals(secdivs[1].id, sd1);
 sd1:
     entry();
     csrr_usid(usid);
@@ -226,15 +228,15 @@ sd2:
     printf("After switching to SecDiv %d via immediate\n", usid);
 
     register uint64_t ret_addr asm("ra");
-    jalrs(ret_addr, &&sd3, secdivs[0].id);
+    jalrs(ret_addr, &&sd3, secdivs[1].id);
 sd3:
     entry();
     csrr_usid(usid);
     printf("After switching to SecDiv %d via register\n", usid);
 
     /* Switch SecDiv into another function and return from it */
-    grant(&jump_target, secdivs[1].id, RT_R | RT_W | RT_X);
-    jalrs(ret_addr, &jump_target, secdivs[1].id);
+    grant(&jump_target, secdivs[2].id, RT_R | RT_W | RT_X);
+    jalrs(ret_addr, &jump_target, secdivs[2].id);
 
     jalrs(ret_addr, &&sd4, initial_secdiv);
 sd4:
@@ -313,8 +315,7 @@ void userspace_thread_creation_test(seL4_BootInfo *info) {
     seL4_Error error;
 
     /* At least 1 additional SecDiv is needed further down in the test */
-    assert(NUM_SECDIVS >= 1);
-
+    assert(NUM_SECDIVS > 1);
 
     scthreads_init_contexts(info, (void *)CONTEXT_VADDR, secdivs[NUM_SECDIVS - 1].id);
 
