@@ -10,14 +10,14 @@ SecCells currently is designed as an extension to the RISC-V ISA.
 ### Prerequisites
 
 As the implementation is based on the RISC-V ISA with modifications, make sure to have the
-[RISC-V toolchain](https://github.com/riscv/riscv-gnu-toolchain) installed.
+[RISC-V toolchain](https://github.com/riscv-collab/riscv-gnu-toolchain) installed.
 To successfully build for SecCells, please note that you need a
-[modified version of the binutils](https://bitbucket.org/atrib/riscv-binutils-gdb/src/secure/) to compile the seL4
+[modified version of the binutils](https://github.com/seccells/riscv-binutils-gdb/tree/secure) to compile the seL4
 microkernel and the userspace components.
 
 Additionally, current tests are executed in a virtual environment provided by QEMU, since there is no hardware for
 SecCells (yet).
-Please use our [modified version of QEMU](https://bitbucket.org/atrib/qemu/src/secure-florian/) for SecCells support in
+Please use our [modified version of QEMU](https://github.com/seccells/qemu/tree/secure-florian) for SecCells support in
 the `qemu-system-riscv64` executable.
 
 Please note that there are also other requirements for building and running the code such as CMake, Ninja, or Python 3
