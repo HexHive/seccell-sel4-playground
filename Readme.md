@@ -89,3 +89,14 @@ For userspace modifications, modify/add/delete code in the `src` directory.
 This is where the code for the rootserver is tracked.
 Please don't forget to update the `CMakeLists.txt` file in the root directory of the repository accordingly if you add
 or remove files or dependencies.
+
+## Debugging the code
+
+If you invoke `./simulate -d`, QEMU is run with a GDB server waiting for connections.
+You can then from another terminal window run
+`riscv64-unknown-elf-gdb -x ../step-into-kernel.gdb images/seccell-test-image-riscv-spike` from inside the build
+directory which will stop the debugger at the kernel entry point.
+
+The script also adds a breakpoint to the `main` function in userspace.
+Thus, if you want to debug your userspace application instead of the kernel, just issue a `continue` inside the GDB
+prompt and the debugger will drop you into the userspace application!
