@@ -7,6 +7,21 @@ SecCells currently is designed as an extension to the RISC-V ISA.
 
 ## Building and running
 
+### tl;dr
+
+You need to meet the requirements listed in the [prerequisites section](#prerequisites) below.
+Then, the following steps are sufficient for retrieving the code, building the system and running it:
+
+```bash
+git clone --recurse-submodules git@github.com:seccells/seL4-SecCell-playground.git
+cd seL4-SecCell-playground
+mkdir build
+cd build
+../init-build.sh
+ninja
+./simulate
+```
+
 ### Prerequisites
 
 As the implementation is based on the RISC-V ISA with modifications, make sure to have the
