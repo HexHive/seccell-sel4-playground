@@ -1,6 +1,6 @@
 [submodule "kernel"]
 	path = kernel
-	url = git@github.com:seccells/sel4.git
+	url = git@github.com:HexHive/seccell-seL4.git
 	branch = secure-florian
 [submodule "projects/musllibc"]
 	path = projects/musllibc
@@ -8,7 +8,7 @@
 	branch = 12.0.x-compatible
 [submodule "tools/opensbi"]
 	path = tools/opensbi
-	url = git@github.com:seccells/opensbi.git
+	url = git@github.com:HexHive/seccell-opensbi.git
 	branch = secure
 [submodule "projects/sel4runtime"]
 	path = projects/sel4runtime
@@ -16,7 +16,7 @@
 	branch = 12.0.x-compatible
 [submodule "tools/seL4_tools"]
 	path = tools/seL4_tools
-	url = git@github.com:seccells/seL4_tools.git
+	url = git@github.com:HexHive/seccell-seL4_tools.git
 	branch = secure
 [submodule "projects/util_libs"]
 	path = projects/util_libs
@@ -24,5 +24,5 @@
 	branch = 12.1.x-compatible
 [submodule "projects/seL4_libs"]
 	path = projects/seL4_libs
-	url = git@github.com:seccells/seL4_libs.git
+	url = git@github.com:HexHive/seccell-seL4_libs.git
 	branch = secure-florian
