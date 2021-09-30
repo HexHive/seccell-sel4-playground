@@ -5,10 +5,10 @@
 #include <utils/util.h>
 #include <sel4utils/util.h>
 #include <sel4/sel4_arch/mapping.h>
+#include <seccells/scthreads.h>
+#include <seccells/seccells.h>
 
 #include "alloc.h"
-#include "scthreads.h"
-#include "seccells.h"
 
 #define RUN_TEST(func, args...)                                                         \
     do {                                                                                \

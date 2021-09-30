@@ -16,8 +16,6 @@ add_executable(
     seL4-playground
     src/main.c
     src/alloc.c
-    src/scthreads/scthreads.c
-    src/scthreads/scthreads.S
 )
 
 # Add the global include directory
@@ -30,6 +28,7 @@ target_include_directories(seL4-playground
 target_link_libraries(seL4-playground
     PUBLIC
         sel4
+        seccells
         muslc
         utils
         sel4muslcsys
