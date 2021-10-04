@@ -28,9 +28,9 @@ target_include_directories(seL4-playground
 target_link_libraries(seL4-playground
     PUBLIC
         sel4
-        seccells
         muslc
         utils
+        seL4seccells
         sel4muslcsys
         sel4platsupport
         sel4utils
