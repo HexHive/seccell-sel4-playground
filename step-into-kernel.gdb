@@ -9,9 +9,9 @@ set radix 16
 target remote localhost:1234
 
 # Load symbols for OpenSBI, kernel and executable / libraries
-add-symbol-file images/seccell-test-image-riscv-spike
+add-symbol-file images/seL4-playground-image-riscv-spike
 add-symbol-file kernel/kernel.elf
-add-symbol-file seccell-test
+add-symbol-file seL4-playground
 
 # Break at jump to kernel
 # Adapt offset in elfloader binary, if necessary
