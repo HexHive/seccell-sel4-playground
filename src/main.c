@@ -339,7 +339,7 @@ void *user_thread_call_target(void *args) {
     printf("Executing in a new userspace thread\n");
     RUN_TEST(print_test);
     /* Return to previous SecDiv */
-    scthreads_return();
+    scthreads_return(NULL);
 }
 
 void *chain_scthreads_call(void *args) {
@@ -347,7 +347,7 @@ void *chain_scthreads_call(void *args) {
     grant(&user_thread_call_target, usid, RT_R | RT_W | RT_X);
     scthreads_call(usid, &user_thread_call_target, NULL);
     /* Return to previous SecDiv */
-    scthreads_return();
+    scthreads_return((void *)42);
 }
 
 void userspace_thread_call_test(seL4_BootInfo *info) {
@@ -357,9 +357,13 @@ void userspace_thread_call_test(seL4_BootInfo *info) {
     assert(NUM_SECDIVS > 2);
 
     int chain_usid = secdivs[NUM_SECDIVS / 2].id;
-    scthreads_call(secdivs[NUM_SECDIVS - 1].id, &chain_scthreads_call, (void *)&chain_usid);
+    void *ret = scthreads_call(secdivs[NUM_SECDIVS - 1].id, &chain_scthreads_call, (void *)&chain_usid);
 
     printf("Executing in initial userspace thread\n");
+
+    /* scthreads_return should have passed return value 42 on to the caller */
+    assert((seL4_Word)ret == 42);
+    printf("Retval: %p\n", ret);
 }
 
 void compile_test(void) {
