@@ -30,8 +30,11 @@ void sdswitch_test(void);
 void jump_target(void);
 void kernel_thread_creation_test(seL4_BootInfo *info);
 void kernel_thread_target(void);
-void userspace_thread_creation_test(seL4_BootInfo *info);
-void user_thread_target(void);
+void user_thread__switch_target(void);
+void userspace_thread_switch_test(seL4_BootInfo *info);
+void *user_thread__call_target(void);
+void *chain_scthreads_call(void *args);
+void userspace_thread_call_test(seL4_BootInfo *info);
 void compile_test(void);
 
 seL4_Word stack[4096];
@@ -62,7 +65,9 @@ int main(int argc, char *argv[]) {
     /* Test creating a new kernel thread */
     RUN_TEST(kernel_thread_creation_test, info);
     /* Test creating new userspace threads */
-    RUN_TEST(userspace_thread_creation_test, info);
+    scthreads_init_contexts(info, (void *)CONTEXT_VADDR, NUM_SECDIVS + 1);
+    RUN_TEST(userspace_thread_switch_test, info);
+    RUN_TEST(userspace_thread_call_test, info);
 
     /* Revoke SecDiv permissions */
     revoke_secdivs();
@@ -310,29 +315,51 @@ void kernel_thread_target(void) {
     seL4_TCB_Suspend(tcb);
 }
 
-void user_thread_target(void) {
+void user_thread_switch_target(void) {
     printf("Executing in a new userspace thread\n");
     RUN_TEST(print_test);
     /* Switch back to initial SecDiv */
     scthreads_switch(secdivs[0].id);
 }
 
-void userspace_thread_creation_test(seL4_BootInfo *info) {
+void userspace_thread_switch_test(seL4_BootInfo *info) {
     seL4_Error error;
 
     /* At least 1 additional SecDiv is needed further down in the test */
     assert(NUM_SECDIVS > 1);
 
-    /* Pass NUM_SECDIVS + 1 because the init function expects the number of SecDivs including the supervisor SecDiv */
-    scthreads_init_contexts(info, (void *)CONTEXT_VADDR, NUM_SECDIVS + 1);
-
-    scthreads_set_thread_entry(secdivs[NUM_SECDIVS - 1].id, &user_thread_target);
+    scthreads_set_thread_entry(secdivs[NUM_SECDIVS - 1].id, &user_thread_switch_target);
 
     scthreads_switch(secdivs[NUM_SECDIVS - 1].id);
 
     printf("Executing in initial userspace thread\n");
-    /* Revoke SecDiv permissions */
-    revoke_secdivs();
+}
+
+void *user_thread_call_target(void *args) {
+    printf("Executing in a new userspace thread\n");
+    RUN_TEST(print_test);
+    /* Return to previous SecDiv */
+    scthreads_return();
+}
+
+void *chain_scthreads_call(void *args) {
+    int usid = *(int *)args;
+    grant(&user_thread_call_target, usid, RT_R | RT_W | RT_X);
+    scthreads_call(usid, &user_thread_call_target, NULL);
+    /* Return to previous SecDiv */
+    scthreads_return();
+}
+
+void userspace_thread_call_test(seL4_BootInfo *info) {
+    seL4_Error error;
+
+    /* At least 2 additional SecDivs are needed further down in the test */
+    assert(NUM_SECDIVS > 2);
+
+    int chain_usid = secdivs[NUM_SECDIVS / 2].id;
+    scthreads_call(secdivs[NUM_SECDIVS - 1].id, &chain_scthreads_call, (void *)&chain_usid);
+
+    printf("Executing in initial userspace thread\n");
 }
 
 void compile_test(void) {
