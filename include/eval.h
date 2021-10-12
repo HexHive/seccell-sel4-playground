@@ -10,12 +10,12 @@ typedef struct {
 } hwcounter_t;
 
 typedef struct {
-    void *base_addr;
-    seL4_Word length;
+    seL4_Word base_addr, size;
 } vma_t;
 
 typedef struct {
-    seL4_Word vma_size;
+    seL4_BootInfo *info;
+    vma_t vma;
     hwcounter_t inst, cycle, time;
 } eval_run_t;
 
