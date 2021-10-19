@@ -15,6 +15,17 @@
 #define CONTEXT_VADDR 0xB000000
 #define NUM_SECDIVS 3   /* Number of userspace SecDivs (including the initially running SecDiv) */
 
+const seL4_Word BUFSIZES[] = {
+    0x1000      /*    4kiB */,
+    0x10000     /*  64 kiB */,
+    0x19000     /* 100 kiB */,
+    0x100000    /*   1 MiB */,
+    0x800000    /*   8 MiB */,
+    0x6400000   /* 100 MiB */,
+    0x20000000  /* 512 MiB */
+    };
+#define RUNS (sizeof(BUFSIZES) / sizeof(*BUFSIZES))
+
 void setup_secdivs(void);
 void revoke_secdivs(void);
 void *eval_thread_1(void *args);
@@ -52,26 +63,39 @@ int main(int argc, char *argv[]) {
     /* Have to grant read-execute permissions for the other SecDivs to execute the code */
     grant(&eval_thread_1, secdivs[1].id, RT_R | RT_X);
     grant(&eval_thread_2, secdivs[2].id, RT_R | RT_X);
-    /* Have to grant read-write permissions for the other SecDiv to map ranges */
-    grant(info, secdivs[1].id, RT_R | RT_W);
-    grant(seL4_GetIPCBuffer(), secdivs[1].id, RT_R | RT_W);
 
-    /* Initialize evaluation run arguments and transfer permissions to runner thread */
+    /* Initialize common evaluation run arguments */
     eval_run_t *run_args = (eval_run_t *)vaddr;
     vaddr += BIT(seL4_MinRangeBits);
     memset(run_args, 0, sizeof(eval_run_t));
-    run_args->info = info;
     run_args->vma.base_addr = vaddr;
-    run_args->vma.size = BIT(seL4_MinRangeBits);
-    tfer(run_args, secdivs[1].id, RT_R | RT_W);
 
-    scthreads_call(secdivs[1].id, &eval_thread_1, (void *)run_args);
+    for (int i = 0; i < RUNS; i++) {
+        seL4_Word buf_size = BUFSIZES[i];
+        seL4_CPtr shared_buf = alloc_object(info, seL4_RISCV_RangeObject, buf_size);
+        /* Initialize run-specific arguments and transfer permissions to runner thread */
+        run_args->vma.size = buf_size;
+        /* Shared buffer setup */
+        error = seL4_RISCV_Range_Map(shared_buf, seL4_CapInitThreadVSpace, run_args->vma.base_addr, seL4_ReadWrite,
+                                        seL4_RISCV_Default_VMAttributes);
+        ZF_LOGF_IF(error != seL4_NoError, "Failed to map range @ %p", (void *)run_args->vma.base_addr);
+        /* Transfer permissions on shared buffer and run arguments to runner thread */
+        tfer(run_args->vma.base_addr, secdivs[1].id, RT_R | RT_W);
+        tfer(run_args, secdivs[1].id, RT_R | RT_W);
 
-    printf("Metric               Value\n");
-    printf("--------------------------\n");
-    printf("Instructions    %10d\n", run_args->inst.end - run_args->inst.start);
-    printf("Cycles          %10d\n", run_args->cycle.end - run_args->cycle.start);
-    printf("Time            %10d\n", run_args->time.end - run_args->time.start);
+        scthreads_call(secdivs[1].id, &eval_thread_1, (void *)run_args);
+
+        /* Shared buffer teardown */
+        error = seL4_RISCV_Range_Unmap(shared_buf);
+        ZF_LOGF_IF(error != seL4_NoError, "Failed to unmap range");
+
+        printf("Evaluation run with buffer size 0x%x bytes\n", buf_size);
+        printf("Metric               Value\n");
+        printf("--------------------------\n");
+        printf("Instructions    %10d\n", run_args->inst.end - run_args->inst.start);
+        printf("Cycles          %10d\n", run_args->cycle.end - run_args->cycle.start);
+        printf("Time            %10d\n\n", run_args->time.end - run_args->time.start);
+    }
 
     /* Suspend the root server - isn't needed anymore */
     seL4_TCB_Suspend(seL4_CapInitThreadTCB);
@@ -87,12 +111,6 @@ void *eval_thread_1(void *args) {
     RDCYCLE(run->cycle.start);
     RDTIME(run->time.start);
 
-    /* Communication buffer setup */
-    seL4_CPtr range = alloc_object(run->info, seL4_RISCV_RangeObject, run->vma.size);
-    seL4_Error error = seL4_RISCV_Range_Map(range, seL4_CapInitThreadVSpace, run->vma.base_addr, seL4_ReadWrite,
-                                    seL4_RISCV_Default_VMAttributes);
-    ZF_LOGF_IF(error != seL4_NoError, "Failed to map range @ %p", (void *)run->vma.base_addr);
-
     /* Communication buffer initialization => make sure every byte was touched */
     memset((void *) run->vma.base_addr, 0x41, run->vma.size);
 
@@ -101,15 +119,12 @@ void *eval_thread_1(void *args) {
     grant(&(run->vma), secdivs[2].id, RT_R);
     scthreads_call(secdivs[2].id, &eval_thread_2, &(run->vma));
 
-    /* Communication buffer teardown */
-    error = seL4_RISCV_Range_Unmap(range);
-    ZF_LOGF_IF(error != seL4_NoError, "Failed to unmap range");
-
     /* End performance counters */
     RDINSTRET(run->inst.end);
     RDCYCLE(run->cycle.end);
     RDTIME(run->time.end);
 
+    tfer(run->vma.base_addr, secdivs[0].id, RT_R | RT_W);
     tfer(run, secdivs[0].id, RT_R | RT_W);
     scthreads_return(NULL);
 }
@@ -122,6 +137,7 @@ void *eval_thread_2(void *args) {
 
     /* Hand control back to calling thread */
     tfer(vma->base_addr, secdivs[1].id, RT_R | RT_W);
+    prot(vma, 0);
     scthreads_return(NULL);
 }
 

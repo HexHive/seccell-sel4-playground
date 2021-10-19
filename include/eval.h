@@ -14,7 +14,6 @@ typedef struct {
 } vma_t;
 
 typedef struct {
-    seL4_BootInfo *info;
     vma_t vma;
     hwcounter_t inst, cycle, time;
 } eval_run_t;
