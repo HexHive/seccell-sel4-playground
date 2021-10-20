@@ -30,7 +30,6 @@ target_link_libraries(seL4-playground
         sel4
         muslc
         utils
-        seL4seccells
         sel4muslcsys
         sel4platsupport
         sel4utils
