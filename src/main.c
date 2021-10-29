@@ -1,20 +1,36 @@
-#include <stdio.h>
+#include <allocman/allocman.h>
+#include <allocman/bootstrap.h>
+#include <allocman/vka.h>
 #include <sel4/sel4.h>
 #include <sel4platsupport/bootinfo.h>
 #include <sel4platsupport/platsupport.h>
-#include <utils/util.h>
+#include <sel4utils/mapping.h>
+#include <sel4utils/process.h>
 #include <sel4utils/util.h>
-#include <sel4/sel4_arch/mapping.h>
+#include <sel4utils/vspace.h>
+#include <simple-default/simple-default.h>
+#include <simple/simple.h>
+#include <stdio.h>
+#include <utils/util.h>
+#include <vka/object.h>
+#include <vspace/vspace.h>
 
-#include "alloc.h"
+#define BASE_VADDR 0xA000000
 
-#define BASE_VADDR    0xA000000
+/* Dimensions of virtual memory for the allocator to use */
+#define ALLOCATOR_VIRTUAL_POOL_SIZE (BIT(seL4_PageBits) * 100)
+/* Static memory for the allocator to bootstrap with */
+#define ALLOCATOR_STATIC_POOL_SIZE (BIT(seL4_PageBits) * 10)
+static char allocator_mem_pool[ALLOCATOR_STATIC_POOL_SIZE];
+/* Global allocator state */
+simple_t simple;
+vka_t vka;
+allocman_t *allocman;
+vspace_t vspace;
+sel4utils_alloc_data_t data;
 
-void kernel_thread_creation_test(seL4_BootInfo *info);
-void kernel_thread_target(void);
-
-seL4_Word stack[4096];
-seL4_CPtr tcb;
+void init_allocator(seL4_BootInfo *info);
+void init_client(void);
 
 int main(int argc, char *argv[]) {
     /* Parse the location of the seL4_BootInfo data structure from
@@ -27,7 +43,8 @@ int main(int argc, char *argv[]) {
     }
     debug_print_bootinfo(info);
 
-    kernel_thread_creation_test(info);
+    init_allocator(info);
+    init_client();
 
     /* Suspend the root server - isn't needed anymore */
     seL4_TCB_Suspend(seL4_CapInitThreadTCB);
@@ -35,49 +52,36 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-void kernel_thread_creation_test(seL4_BootInfo *info) {
-    printf("Setting up new TCB... ");
-    seL4_Word error;
+void init_allocator(seL4_BootInfo *info) {
+    /* Initialize simple */
+    simple_default_init_bootinfo(&simple, info);
 
-    tcb = alloc_object(info, seL4_TCBObject, seL4_TCBBits);
+    /* Setup the allocator with some static memory */
+    allocman = bootstrap_use_current_simple(&simple, ALLOCATOR_STATIC_POOL_SIZE, allocator_mem_pool);
+    assert(allocman);
+    allocman_make_vka(&vka, allocman);
 
-    error = seL4_TCB_Configure(
-        tcb,                        /* TCB cap      */
-        seL4_CapNull,               /* EP cap       */
-        seL4_CapInitThreadCNode,    /* CSpace cap   */
-        seL4_NilData,               /* CSpace data  */
-        seL4_CapInitThreadVSpace,   /* VSpace cap   */
-        seL4_NilData,               /* VSpace data  */
-        (seL4_Word) seL4_Null,      /* IPC buf ptr  */
-        seL4_CapInitThreadIPCBuffer /* IPC buf cap  */
-    );
-    ZF_LOGF_IF(error != seL4_NoError, "Failed to configure new TCB");
+    /* Bootstrap a VSpace object with the current VSpace for easier interaction */
+    int error = sel4utils_bootstrap_vspace_with_bootinfo_leaky(&vspace, &data, seL4_CapInitThreadVSpace, &vka, info);
+    assert(error == 0);
 
-    /* Setting priority to minimal ensures the thread only starts running once the original thread gives up control */
-    error = seL4_TCB_SetPriority(tcb, seL4_CapInitThreadTCB, seL4_MinPrio);
-    ZF_LOGF_IF(error != seL4_NoError, "Failed to set the priority for new TCB object");
-
-    seL4_UserContext ctx = {0};
-
-    /* Registers are empty, only set stack/thread pointer and PC */
-    ctx.pc = (seL4_Word)(&kernel_thread_target);
-    ctx.sp = (seL4_Word)(stack) + sizeof(stack);
-    ctx.tp = (seL4_Word)(stack) + sizeof(stack);
-
-    error = seL4_TCB_WriteRegisters(tcb, 0, 0, 3, &ctx);
-    ZF_LOGF_IF(error != seL4_NoError, "CPU context for new thread could not be set");
-
-    printf("Set up new TCB\n");
-
-    /* Schedule the new thread */
-    error = seL4_TCB_Resume(tcb);
-    ZF_LOGF_IF(error != seL4_NoError, "Thread could not be scheduled");
-
-    printf("Scheduled new thread\n\n");
+    /* Provide virtual memory to the allocator */
+    void *vaddr;
+    reservation_t virtual_reservation = vspace_reserve_range(&vspace, ALLOCATOR_VIRTUAL_POOL_SIZE, seL4_AllRights, 1,
+                                                             &vaddr);
+    assert(virtual_reservation.res);
+    bootstrap_configure_virtual_pool(allocman, vaddr, ALLOCATOR_VIRTUAL_POOL_SIZE, seL4_CapInitThreadVSpace);
 }
 
-void kernel_thread_target(void) {
-    printf("Executing in a new kernel thread\n");
-    /* Suspend the new thread - not needed anymore */
-    seL4_TCB_Suspend(tcb);
+void init_client(void) {
+    /* Load ELF from CPIO archive and configure new process */
+    sel4utils_process_t new_process;
+    sel4utils_process_config_t config = process_config_default_simple(&simple, "client", seL4_MaxPrio);
+    config = process_config_auth(config, simple_get_tcb(&simple));
+    int error = sel4utils_configure_process_custom(&new_process, &vka, &vspace, config);
+    assert(error == 0);
+
+    /* Launch the new process */
+    error = sel4utils_spawn_process_v(&new_process, &vka, &vspace, 0, NULL, 1);
+    assert(error == 0);
 }

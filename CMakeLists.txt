@@ -11,11 +11,31 @@ include(settings.cmake)
 # Include the actual build system provided by seL4_tools
 include(tools/seL4_tools/cmake-tool/all.cmake)
 
-# Name the executable and list source files required to build it
+# Name the client executable and list source files required to build it
 add_executable(
-    seL4-playground
+    client
+    src/client.c
+)
+# List the libraries to link with the application
+target_link_libraries(client
+    PUBLIC
+        sel4
+        muslc
+        utils
+        sel4muslcsys
+        sel4platsupport
+        sel4utils
+        sel4debug
+)
+
+# Make a CPIO archive from the client application to link into the main application
+include(cpio)
+MakeCPIO(archive.o "$<TARGET_FILE:client>")
+
+# Name the rootserver executable and list source files required to build it
+add_executable(seL4-playground
     src/main.c
-    src/alloc.c
+    archive.o
 )
 
 # Add the global include directory
@@ -33,6 +53,7 @@ target_link_libraries(seL4-playground
         sel4muslcsys
         sel4platsupport
         sel4utils
+        sel4allocman
         sel4debug
 )
 
