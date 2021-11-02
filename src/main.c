@@ -30,6 +30,7 @@ vspace_t vspace;
 sel4utils_alloc_data_t data;
 
 void init_allocator(seL4_BootInfo *info);
+seL4_CPtr init_endpoint(void);
 void init_client(void);
 
 int main(int argc, char *argv[]) {
@@ -43,7 +44,10 @@ int main(int argc, char *argv[]) {
     }
     debug_print_bootinfo(info);
 
+    seL4_CPtr endpoint;
+
     init_allocator(info);
+    endpoint = init_endpoint();
     init_client();
 
     /* Suspend the root server - isn't needed anymore */
@@ -52,6 +56,7 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
+/* Initialize an allocator with seL4_utils for easier object creation and manipulation */
 void init_allocator(seL4_BootInfo *info) {
     /* Initialize simple */
     simple_default_init_bootinfo(&simple, info);
@@ -73,6 +78,16 @@ void init_allocator(seL4_BootInfo *info) {
     bootstrap_configure_virtual_pool(allocman, vaddr, ALLOCATOR_VIRTUAL_POOL_SIZE, seL4_CapInitThreadVSpace);
 }
 
+/* Initialize an endpoint for the IPC communication with the second process */
+seL4_CPtr init_endpoint(void) {
+    vka_object_t ep = {0};
+    int error = vka_alloc_endpoint(&vka, &ep);
+    assert(error == 0);
+
+    return ep.cptr;
+}
+
+/* Initialize another process (own CSpace, own VSpace) and run it */
 void init_client(void) {
     /* Load ELF from CPIO archive and configure new process */
     sel4utils_process_t new_process;
