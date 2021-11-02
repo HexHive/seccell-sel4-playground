@@ -31,7 +31,7 @@ sel4utils_alloc_data_t data;
 
 void init_allocator(seL4_BootInfo *info);
 seL4_CPtr init_endpoint(void);
-void init_client(void);
+void init_client(seL4_CPtr base_ep);
 
 int main(int argc, char *argv[]) {
     /* Parse the location of the seL4_BootInfo data structure from
@@ -48,7 +48,7 @@ int main(int argc, char *argv[]) {
 
     init_allocator(info);
     endpoint = init_endpoint();
-    init_client();
+    init_client(endpoint);
 
     /* Suspend the root server - isn't needed anymore */
     seL4_TCB_Suspend(seL4_CapInitThreadTCB);
@@ -87,8 +87,8 @@ seL4_CPtr init_endpoint(void) {
     return ep.cptr;
 }
 
-/* Initialize another process (own CSpace, own VSpace) and run it */
-void init_client(void) {
+/* Initialize another process (own CSpace, own VSpace, minted endpoint capability) and run it */
+void init_client(seL4_CPtr base_ep) {
     /* Load ELF from CPIO archive and configure new process */
     sel4utils_process_t new_process;
     sel4utils_process_config_t config = process_config_default_simple(&simple, "client", seL4_MaxPrio);
@@ -96,7 +96,18 @@ void init_client(void) {
     int error = sel4utils_configure_process_custom(&new_process, &vka, &vspace, config);
     assert(error == 0);
 
-    /* Launch the new process */
-    error = sel4utils_spawn_process_v(&new_process, &vka, &vspace, 0, NULL, 1);
+    /* Mint the endpoint capability and copy it into the process's CSpace */
+    cspacepath_t ep_path;
+    vka_cspace_make_path(&vka, base_ep, &ep_path);
+    seL4_CPtr minted_ep = sel4utils_mint_cap_to_process(&new_process, ep_path, seL4_AllRights, 0x42);
+    assert(minted_ep != 0);
+
+    /* Create argv for new process => pass the CPtr to the minted capability in the new process's CSpace */
+    char arg_strings[1][WORD_STRING_SIZE];
+    char *argv[1];
+    sel4utils_create_word_args(arg_strings, argv, 1, minted_ep);
+
+    /* Launch the new process with the prepared argv */
+    error = sel4utils_spawn_process_v(&new_process, &vka, &vspace, 1, argv, 1);
     assert(error == 0);
 }
