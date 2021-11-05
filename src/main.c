@@ -29,10 +29,13 @@ vka_t vka;
 allocman_t *allocman;
 vspace_t vspace;
 sel4utils_alloc_data_t data;
+sel4utils_process_t new_process;
 
 void init_allocator(seL4_BootInfo *info);
 seL4_CPtr init_endpoint(void);
 void init_client(seL4_CPtr base_ep);
+void init_buffer(void *vaddr, seL4_Word num_pages, seL4_Word page_bits);
+void teardown_buffer(void *vaddr, seL4_Word num_pages, seL4_Word page_bits);
 
 int main(int argc, char *argv[]) {
     /* Parse the location of the seL4_BootInfo data structure from
@@ -110,7 +113,6 @@ seL4_CPtr init_endpoint(void) {
 /* Initialize another process (own CSpace, own VSpace, minted endpoint capability) and run it */
 void init_client(seL4_CPtr base_ep) {
     /* Load ELF from CPIO archive and configure new process */
-    sel4utils_process_t new_process;
     sel4utils_process_config_t config = process_config_default_simple(&simple, "client", seL4_MaxPrio);
     config = process_config_auth(config, simple_get_tcb(&simple));
     int error = sel4utils_configure_process_custom(&new_process, &vka, &vspace, config);
@@ -130,4 +132,23 @@ void init_client(seL4_CPtr base_ep) {
     /* Launch the new process with the prepared argv */
     error = sel4utils_spawn_process_v(&new_process, &vka, &vspace, 1, argv, 1);
     assert(error == 0);
+}
+
+/* Create capabilities for a buffer of specified size and map it at the specified virtual memory address */
+void init_buffer(void *vaddr, seL4_Word num_pages, seL4_Word page_bits) {
+    /* Create range reservation in the current VSpace and map the range */
+    reservation_t res = vspace_reserve_range_at(&vspace, vaddr, num_pages * BIT(page_bits), seL4_AllRights, 1);
+    int error = vspace_new_pages_at_vaddr(&vspace, vaddr, num_pages, page_bits, res);
+    assert(error == 0);
+
+    /* Map the range also in the second thread's VSpace */
+    error = vspace_share_mem_at_vaddr(&vspace, &new_process.vspace, vaddr, num_pages, page_bits, vaddr, res);
+    assert(error == 0);
+}
+
+/* Unmap buffer and free capabilities */
+void teardown_buffer(void *vaddr, seL4_Word num_pages, seL4_Word page_bits) {
+    /* Unmap pages in both VSpaces: the rootserver's and the second process's */
+    vspace_unmap_pages(&vspace, vaddr, num_pages, page_bits, VSPACE_FREE);
+    vspace_unmap_pages(&new_process.vspace, vaddr, num_pages, page_bits, VSPACE_FREE);
 }
