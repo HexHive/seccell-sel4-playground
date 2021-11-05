@@ -50,6 +50,11 @@ int main(int argc, char *argv[]) {
     endpoint = init_endpoint();
     init_client(endpoint);
 
+    /* Call into the second process and wait for its response */
+    seL4_MessageInfo_t msginfo = seL4_MessageInfo_new(0xdeadbeef, 0, 0, 0);
+    msginfo = seL4_Call(endpoint, msginfo);
+    printf("[server] Received answer with label 0x%x\n", seL4_MessageInfo_get_label(msginfo));
+
     /* Suspend the root server - isn't needed anymore */
     seL4_TCB_Suspend(seL4_CapInitThreadTCB);
 

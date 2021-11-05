@@ -23,7 +23,14 @@ int main(int argc, char *argv[]) {
     }
     seL4_CPtr endpoint = atol(argv[0]);
 
-    printf("Hello World!\n");
+    /* Wait for message on endpoint */
+    seL4_Word sender = 0;
+    seL4_MessageInfo_t msginfo = seL4_Recv(endpoint, &sender);
+    printf("[client] Got woken up by an IPC message with label 0x%x\n", seL4_MessageInfo_get_label(msginfo));
+
+    /* Reply to the sender of the previous IPC message */
+    msginfo = seL4_MessageInfo_new(0x1337, 0, 0, 0);
+    seL4_Reply(msginfo);
 
     return 0;
 }
