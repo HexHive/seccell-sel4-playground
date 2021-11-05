@@ -10,6 +10,7 @@
 #include <sel4utils/vspace.h>
 #include <simple-default/simple-default.h>
 #include <simple/simple.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <utils/util.h>
 #include <vka/object.h>
@@ -50,12 +51,26 @@ int main(int argc, char *argv[]) {
     endpoint = init_endpoint();
     init_client(endpoint);
 
+    /* Setup data to pass along with the IPC */
+    bool exit = false;
+    seL4_Word addr = BASE_VADDR;
+    seL4_Word size = 0;
+    seL4_SetMR(0, (seL4_Word)exit);
+    seL4_SetMR(1, addr);
+    seL4_SetMR(2, size);
+    seL4_MessageInfo_t msginfo = seL4_MessageInfo_new(0xdeadbeef, 0, 0, 3);
     /* Call into the second process and wait for its response */
-    seL4_MessageInfo_t msginfo = seL4_MessageInfo_new(0xdeadbeef, 0, 0, 0);
     msginfo = seL4_Call(endpoint, msginfo);
     printf("[server] Received answer with label 0x%x\n", seL4_MessageInfo_get_label(msginfo));
 
+    /* Stop the second process */
+    exit = true;
+    seL4_SetMR(0, (seL4_Word)exit);
+    msginfo = seL4_MessageInfo_new(0x42, 0, 0, 1);
+    seL4_Send(endpoint, msginfo);
+
     /* Suspend the root server - isn't needed anymore */
+    printf("[server] Suspending... Bye!\n");
     seL4_TCB_Suspend(seL4_CapInitThreadTCB);
 
     return 0;
