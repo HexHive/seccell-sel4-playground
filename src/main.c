@@ -22,7 +22,7 @@
 /* Dimensions of virtual memory for the allocator to use */
 #define ALLOCATOR_VIRTUAL_POOL_SIZE (BIT(seL4_PageBits) * 100)
 /* Static memory for the allocator to bootstrap with */
-#define ALLOCATOR_STATIC_POOL_SIZE (BIT(seL4_PageBits) * 10)
+#define ALLOCATOR_STATIC_POOL_SIZE (BIT(seL4_PageBits) * 50)
 static char allocator_mem_pool[ALLOCATOR_STATIC_POOL_SIZE];
 /* Global allocator state */
 simple_t simple;
