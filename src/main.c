@@ -16,7 +16,7 @@
 #include <vka/object.h>
 #include <vspace/vspace.h>
 
-#define BASE_VADDR 0xA000000
+#include "eval.h"
 
 /* Dimensions of virtual memory for the allocator to use */
 #define ALLOCATOR_VIRTUAL_POOL_SIZE (BIT(seL4_PageBits) * 100)
@@ -31,11 +31,12 @@ vspace_t vspace;
 sel4utils_alloc_data_t data;
 sel4utils_process_t new_process;
 
+void run_eval(seL4_CPtr endpoint, seL4_Word num_pages, seL4_Word page_bits);
 void init_allocator(seL4_BootInfo *info);
 seL4_CPtr init_endpoint(void);
 void init_client(seL4_CPtr base_ep);
-void init_buffer(void *vaddr, seL4_Word num_pages, seL4_Word page_bits);
-void teardown_buffer(void *vaddr, seL4_Word num_pages, seL4_Word page_bits);
+void init_buffer(shared_mem_t *buf);
+void teardown_buffer(shared_mem_t *buf);
 
 int main(int argc, char *argv[]) {
     /* Parse the location of the seL4_BootInfo data structure from
@@ -49,15 +50,41 @@ int main(int argc, char *argv[]) {
     debug_print_bootinfo(info);
 
     seL4_CPtr endpoint;
-
     init_allocator(info);
     endpoint = init_endpoint();
     init_client(endpoint);
 
+    /* Example, needs to be extended to actual evaluation usecase */
+    run_eval(endpoint, 12, 12);
+
+    /* Stop the second process */
+    bool exit = true;
+    seL4_SetMR(0, (seL4_Word)exit);
+    seL4_MessageInfo_t msginfo = seL4_MessageInfo_new(0x42, 0, 0, 1);
+    seL4_Send(endpoint, msginfo);
+
+    /* Suspend the root server - isn't needed anymore */
+    printf("[server] Suspending... Bye!\n");
+    seL4_TCB_Suspend(seL4_CapInitThreadTCB);
+
+    return 0;
+}
+
+/* Make an evaluation run with the specified number of pages for the shared buffer */
+void run_eval(seL4_CPtr endpoint, seL4_Word num_pages, seL4_Word page_bits) {
+    shared_mem_t buffer = {
+        .local = NULL,
+        .remote = NULL,
+        .num_pages = num_pages,
+        .page_bits = page_bits,
+    };
+
+    init_buffer(&buffer);
+
     /* Setup data to pass along with the IPC */
     bool exit = false;
-    seL4_Word addr = BASE_VADDR;
-    seL4_Word size = 0;
+    seL4_Word addr = (seL4_Word)buffer.remote;
+    seL4_Word size = buffer.num_pages * BIT(buffer.page_bits);
     seL4_SetMR(0, (seL4_Word)exit);
     seL4_SetMR(1, addr);
     seL4_SetMR(2, size);
@@ -66,17 +93,7 @@ int main(int argc, char *argv[]) {
     msginfo = seL4_Call(endpoint, msginfo);
     printf("[server] Received answer with label 0x%x\n", seL4_MessageInfo_get_label(msginfo));
 
-    /* Stop the second process */
-    exit = true;
-    seL4_SetMR(0, (seL4_Word)exit);
-    msginfo = seL4_MessageInfo_new(0x42, 0, 0, 1);
-    seL4_Send(endpoint, msginfo);
-
-    /* Suspend the root server - isn't needed anymore */
-    printf("[server] Suspending... Bye!\n");
-    seL4_TCB_Suspend(seL4_CapInitThreadTCB);
-
-    return 0;
+    teardown_buffer(&buffer);
 }
 
 /* Initialize an allocator with seL4_utils for easier object creation and manipulation */
@@ -135,20 +152,20 @@ void init_client(seL4_CPtr base_ep) {
 }
 
 /* Create capabilities for a buffer of specified size and map it at the specified virtual memory address */
-void init_buffer(void *vaddr, seL4_Word num_pages, seL4_Word page_bits) {
-    /* Create range reservation in the current VSpace and map the range */
-    reservation_t res = vspace_reserve_range_at(&vspace, vaddr, num_pages * BIT(page_bits), seL4_AllRights, 1);
-    int error = vspace_new_pages_at_vaddr(&vspace, vaddr, num_pages, page_bits, res);
-    assert(error == 0);
+void init_buffer(shared_mem_t *buf) {
+    /* Map contiguous range in the current VSpace */
+    buf->local = vspace_new_pages(&vspace, seL4_ReadWrite, buf->num_pages, buf->page_bits);
+    assert(buf->local != 0);
 
     /* Map the range also in the second thread's VSpace */
-    error = vspace_share_mem_at_vaddr(&vspace, &new_process.vspace, vaddr, num_pages, page_bits, vaddr, res);
-    assert(error == 0);
+    buf->remote = vspace_share_mem(&vspace, &new_process.vspace, buf->local, buf->num_pages, buf->page_bits,
+                                   seL4_ReadWrite, 1);
+    assert(buf->remote != 0);
 }
 
 /* Unmap buffer and free capabilities */
-void teardown_buffer(void *vaddr, seL4_Word num_pages, seL4_Word page_bits) {
+void teardown_buffer(shared_mem_t *buf) {
     /* Unmap pages in both VSpaces: the rootserver's and the second process's */
-    vspace_unmap_pages(&vspace, vaddr, num_pages, page_bits, VSPACE_FREE);
-    vspace_unmap_pages(&new_process.vspace, vaddr, num_pages, page_bits, VSPACE_FREE);
+    vspace_unmap_pages(&vspace, buf->local, buf->num_pages, buf->page_bits, VSPACE_FREE);
+    vspace_unmap_pages(&new_process.vspace, buf->remote, buf->num_pages, buf->page_bits, VSPACE_FREE);
 }

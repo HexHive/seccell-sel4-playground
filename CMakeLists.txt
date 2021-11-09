@@ -37,13 +37,11 @@ add_executable(seL4-playground
     src/main.c
     archive.o
 )
-
 # Add the global include directory
 target_include_directories(seL4-playground
     PRIVATE
         include/
 )
-
 # List the libraries to link with the application
 target_link_libraries(seL4-playground
     PUBLIC
@@ -57,7 +55,7 @@ target_link_libraries(seL4-playground
         sel4debug
 )
 
-# Tell the build system that this application is the root task
+# Tell the build system which application is the root task
 include(rootserver)
 DeclareRootserver(seL4-playground)
 
