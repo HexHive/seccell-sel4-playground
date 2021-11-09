@@ -10,6 +10,9 @@ typedef struct {
 } hwcounter_t;
 
 typedef struct {
+    seL4_Word num_pages, page_bits;
+} vma_t;
+typedef struct {
     void *local, *remote;
     seL4_Word num_pages, page_bits;
 } shared_mem_t;

@@ -41,8 +41,10 @@ int main(int argc, char *argv[]) {
         seL4_Word addr = seL4_GetMR(1);
         seL4_Word size = seL4_GetMR(2);
 
-        /* TODO: this is where the actual benchmarking happens, for now just print stuff */
+        /* This is where the actual benchmarking happens (touching memory), also print basic info for debugging */
         printf("[client] Received: addr = %p, size = %ld\n", (void *)addr, size);
+
+        memset((void *)addr, 0x61, size);
 
         /* Reply to the sender of the previous IPC message */
         msginfo = seL4_MessageInfo_new(0x1337, 0, 0, 0);
