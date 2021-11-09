@@ -7,6 +7,8 @@
 #include <stdio.h>
 #include <utils/util.h>
 
+#include "debug.h"
+
 int main(int argc, char *argv[]) {
     /* Setup serial output via seL4_Debug_PutChar */
     if (platsupport_serial_setup_bootinfo_failsafe()) {
@@ -29,7 +31,7 @@ int main(int argc, char *argv[]) {
         /* Wait for message on endpoint */
         seL4_Word sender = 0;
         seL4_MessageInfo_t msginfo = seL4_Recv(endpoint, &sender);
-        printf("[client] Got woken up by an IPC message with label 0x%x\n", seL4_MessageInfo_get_label(msginfo));
+        DEBUGPRINT("Got woken up by an IPC message with label 0x%x\n", seL4_MessageInfo_get_label(msginfo));
 
         bool exit = (bool)seL4_GetMR(0);
         if (exit) {
@@ -42,7 +44,7 @@ int main(int argc, char *argv[]) {
         seL4_Word size = seL4_GetMR(2);
 
         /* This is where the actual benchmarking happens (touching memory), also print basic info for debugging */
-        printf("[client] Received: addr = %p, size = %ld\n", (void *)addr, size);
+        DEBUGPRINT("Received: addr = %p, size = %ld\n", (void *)addr, size);
 
         memset((void *)addr, 0x61, size);
 
@@ -51,6 +53,6 @@ int main(int argc, char *argv[]) {
         seL4_Reply(msginfo);
     }
 
-    printf("[client] Quitting... Bye!\n");
+    DEBUGPRINT("Quitting... Bye!\n");
     return 0;
 }

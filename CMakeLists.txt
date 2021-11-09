@@ -16,6 +16,11 @@ add_executable(
     client
     src/client.c
 )
+# Add the global include directory
+target_include_directories(client
+    PRIVATE
+        include/
+)
 # List the libraries to link with the application
 target_link_libraries(client
     PUBLIC

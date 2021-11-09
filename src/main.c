@@ -16,6 +16,7 @@
 #include <vka/object.h>
 #include <vspace/vspace.h>
 
+#include "debug.h"
 #include "eval.h"
 
 /* Dimensions of virtual memory for the allocator to use */
@@ -84,7 +85,7 @@ int main(int argc, char *argv[]) {
     seL4_Send(endpoint, msginfo);
 
     /* Suspend the root server - isn't needed anymore */
-    printf("[server] Suspending... Bye!\n");
+    DEBUGPRINT("Suspending... Bye!\n");
     seL4_TCB_Suspend(seL4_CapInitThreadTCB);
 
     return 0;
@@ -127,7 +128,7 @@ void run_eval(seL4_CPtr endpoint, seL4_Word num_pages, seL4_Word page_bits) {
     RDCYCLE(cycle.end);
     RDTIME(time.end);
 
-    printf("[server] Received answer with label 0x%x\n", seL4_MessageInfo_get_label(msginfo));
+    DEBUGPRINT("Received answer with label 0x%x\n", seL4_MessageInfo_get_label(msginfo));
 
     teardown_buffer(&buffer);
 
