@@ -78,10 +78,12 @@ int main(int argc, char *argv[]) {
         run_eval(endpoint, BUFSIZES[i].num_pages, BUFSIZES[i].page_bits);
     }
 
-    /* Stop the second process */
+    /* Stop the second process - expects 3 arguments */
     task_t task = EVAL_EXIT;
     seL4_SetMR(0, (seL4_Word)task);
-    seL4_MessageInfo_t msginfo = seL4_MessageInfo_new(0x42, 0, 0, 1);
+    seL4_SetMR(1, 0);
+    seL4_SetMR(2, 0);
+    seL4_MessageInfo_t msginfo = seL4_MessageInfo_new(0x42, 0, 0, 3);
     seL4_Send(endpoint, msginfo);
 
     /* Suspend the root server - isn't needed anymore */
