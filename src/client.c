@@ -67,10 +67,6 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        /* This is where the actual benchmarking happens (touching memory), also print basic info for debugging */
-
-        memset((void *)addr, 0x61, size);
-
         /* Reply to the sender of the previous IPC message */
         msginfo = seL4_MessageInfo_new(0x1337, 0, 0, 0);
         seL4_Reply(msginfo);
