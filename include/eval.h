@@ -17,6 +17,12 @@ typedef struct {
     seL4_Word num_pages, page_bits;
 } shared_mem_t;
 
+typedef enum {
+    EVAL_EXIT,
+    EVAL_IPC,
+    EVAL_TLB
+} task_t;
+
 /* Macros */
 #define RDINSTRET(counter)        \
     do {                          \

@@ -79,14 +79,16 @@ int main(int argc, char *argv[]) {
     }
 
     /* Stop the second process */
-    bool exit = true;
-    seL4_SetMR(0, (seL4_Word)exit);
+    task_t task = EVAL_EXIT;
+    seL4_SetMR(0, (seL4_Word)task);
     seL4_MessageInfo_t msginfo = seL4_MessageInfo_new(0x42, 0, 0, 1);
     seL4_Send(endpoint, msginfo);
 
     /* Suspend the root server - isn't needed anymore */
     DEBUGPRINT("Suspending... Bye!\n");
     seL4_TCB_Suspend(seL4_CapInitThreadTCB);
+
+    UNREACHABLE();
 
     return 0;
 }
@@ -113,10 +115,10 @@ void run_eval(seL4_CPtr endpoint, seL4_Word num_pages, seL4_Word page_bits) {
     memset(buffer.local, 0x41, buffer.num_pages * BIT(buffer.page_bits));
 
     /* Setup data to pass along with the IPC */
-    bool exit = false;
+    task_t task = EVAL_IPC;
     seL4_Word addr = (seL4_Word)buffer.remote;
     seL4_Word size = buffer.num_pages * BIT(buffer.page_bits);
-    seL4_SetMR(0, (seL4_Word)exit);
+    seL4_SetMR(0, (seL4_Word)task);
     seL4_SetMR(1, addr);
     seL4_SetMR(2, size);
     seL4_MessageInfo_t msginfo = seL4_MessageInfo_new(0xdeadbeef, 0, 0, 3);
