@@ -1,30 +1,30 @@
-#include <stdio.h>
-#include <sel4/sel4.h>
-#include <sel4platsupport/bootinfo.h>
-#include <sel4platsupport/platsupport.h>
-#include <utils/util.h>
-#include <sel4utils/util.h>
-#include <sel4/sel4_arch/mapping.h>
 #include <seccells/scthreads.h>
 #include <seccells/seccells.h>
+#include <sel4/sel4.h>
+#include <sel4/sel4_arch/mapping.h>
+#include <sel4platsupport/bootinfo.h>
+#include <sel4platsupport/platsupport.h>
+#include <sel4utils/util.h>
+#include <stdio.h>
+#include <utils/util.h>
 
 #include "alloc.h"
-#include "eval.h"
 #include "debug.h"
+#include "eval.h"
 
-#define BASE_VADDR    0xA000000
+#define BASE_VADDR 0xA000000
 #define CONTEXT_VADDR 0xB000000
-#define NUM_SECDIVS 3   /* Number of userspace SecDivs (including the initially running SecDiv) */
+#define NUM_SECDIVS 3 /* Number of userspace SecDivs (including the initially running SecDiv) */
 
 const seL4_Word BUFSIZES[] = {
-    0x1000      /*    4kiB */,
-    0x10000     /*  64 kiB */,
-    0x19000     /* 100 kiB */,
-    0x100000    /*   1 MiB */,
-    0x800000    /*   8 MiB */,
-    0x6400000   /* 100 MiB */,
-    0x20000000  /* 512 MiB */
-    };
+    0x1000,     /*    4kiB */
+    0x10000,    /*  64 kiB */
+    0x19000,    /* 100 kiB */
+    0x100000,   /*   1 MiB */
+    0x800000,   /*   8 MiB */
+    0x6400000,  /* 100 MiB */
+    0x20000000, /* 512 MiB */
+};
 #define RUNS (sizeof(BUFSIZES) / sizeof(*BUFSIZES))
 
 void setup_secdivs(void);
@@ -60,7 +60,7 @@ int main(int argc, char *argv[]) {
     /* Map a read-write 4k range at BASE_VADDR for the evaluation run arguments */
     seL4_CPtr range = alloc_object(info, seL4_RISCV_RangeObject, BIT(seL4_MinRangeBits));
     seL4_Error error = seL4_RISCV_Range_Map(range, seL4_CapInitThreadVSpace, vaddr, seL4_ReadWrite,
-                                    seL4_RISCV_Default_VMAttributes);
+                                            seL4_RISCV_Default_VMAttributes);
     ZF_LOGF_IF(error != seL4_NoError, "Failed to map range @ %p", (void *)vaddr);
 
     /* Have to grant read-execute permissions for the other SecDivs to execute the code */
@@ -80,7 +80,7 @@ int main(int argc, char *argv[]) {
         run_args->vma.size = buf_size;
         /* Shared buffer setup */
         error = seL4_RISCV_Range_Map(shared_buf, seL4_CapInitThreadVSpace, run_args->vma.base_addr, seL4_ReadWrite,
-                                        seL4_RISCV_Default_VMAttributes);
+                                     seL4_RISCV_Default_VMAttributes);
         ZF_LOGF_IF(error != seL4_NoError, "Failed to map range @ %p", (void *)run_args->vma.base_addr);
         /* Transfer permissions on shared buffer and run arguments to runner thread */
         tfer(run_args->vma.base_addr, secdivs[1].id, RT_R | RT_W);
@@ -115,7 +115,7 @@ void *eval_thread_1(void *args) {
     RDTIME(run->time.start);
 
     /* Communication buffer initialization => make sure every byte was touched */
-    memset((void *) run->vma.base_addr, 0x41, run->vma.size);
+    memset((void *)run->vma.base_addr, 0x41, run->vma.size);
 
     /* Communication with other scthread */
     tfer(run->vma.base_addr, secdivs[2].id, RT_R | RT_W);
@@ -136,7 +136,7 @@ void *eval_thread_2(void *args) {
     vma_t *vma = (vma_t *)args;
 
     /* Touch all the bytes in the passed buffer */
-    memset((void*)vma->base_addr, 0x61, vma->size);
+    memset((void *)vma->base_addr, 0x61, vma->size);
 
     /* Hand control back to calling thread */
     tfer(vma->base_addr, secdivs[1].id, RT_R | RT_W);
