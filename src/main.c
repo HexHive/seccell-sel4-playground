@@ -28,20 +28,29 @@ vspace_t vspace;
 sel4utils_alloc_data_t data;
 sel4utils_process_t new_process;
 
-void run_eval(seL4_CPtr endpoint, seL4_Word num_pages, seL4_Word page_bits);
+void run_tlb_eval(seL4_CPtr endpoint, seL4_Word num_pages, seL4_Word page_bits);
+void run_ipc_eval(seL4_CPtr endpoint, seL4_Word size);
 void init_allocator(seL4_BootInfo *info);
 seL4_CPtr init_endpoint(void);
 void init_client(seL4_CPtr base_ep);
 void init_buffer(shared_mem_t *buf);
 void teardown_buffer(shared_mem_t *buf);
 
+const seL4_Word IPC_BUFSIZES[] = {
+    0x00001, /*    1 B         */
+    0x00010, /*   16 B         */
+    0x00080, /*  128 B         */
+    0x00200, /*  512 B         */
+    0x00400, /* 1024 B = 1 KiB */
+};
+#define IPC_RUNS (sizeof(IPC_BUFSIZES) / sizeof(*IPC_BUFSIZES))
 /*
  * On RISC-V, we have page sizes 4 KiB, 2 MiB and 1 GiB
  * 4 KiB <==> seL4_PageBits
  * 2 MiB <==> seL4_LargePageBits
  * 1 GiB <==> seL4_HugePageBits
  */
-const vma_t BUFSIZES[] = {
+const vma_t TLB_BUFSIZES[] = {
     /* {num_pages, page_bits} */
     {0x00001, seL4_PageBits}, /*   4 KiB */
     {0x00010, seL4_PageBits}, /*  64 KiB */
@@ -50,7 +59,7 @@ const vma_t BUFSIZES[] = {
     {0x00800, seL4_PageBits}, /*   8 MiB */
     {0x02000, seL4_PageBits}, /*  32 MiB */
 };
-#define RUNS (sizeof(BUFSIZES) / sizeof(*BUFSIZES))
+#define TLB_RUNS (sizeof(TLB_BUFSIZES) / sizeof(*TLB_BUFSIZES))
 
 int main(int argc, char *argv[]) {
     /* Parse the location of the seL4_BootInfo data structure from
@@ -70,8 +79,11 @@ int main(int argc, char *argv[]) {
     init_client(endpoint);
 
     /* Do the benchmarking */
-    for (int i = 0; i < RUNS; i++) {
-        run_eval(endpoint, BUFSIZES[i].num_pages, BUFSIZES[i].page_bits);
+    for (int i = 0; i < TLB_RUNS; i++) {
+        run_tlb_eval(endpoint, TLB_BUFSIZES[i].num_pages, TLB_BUFSIZES[i].page_bits);
+    }
+    for (int i = 0; i < IPC_RUNS; i++) {
+        run_ipc_eval(endpoint, IPC_BUFSIZES[i]);
     }
 
     /* Stop the second process - expects 3 arguments */
@@ -91,8 +103,56 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-/* Make an evaluation run with the specified number of pages for the shared buffer */
-void run_eval(seL4_CPtr endpoint, seL4_Word num_pages, seL4_Word page_bits) {
+/* Make an evaluation run with the specified shared buffer size => focus on IPC speed */
+void run_ipc_eval(seL4_CPtr endpoint, seL4_Word size) {
+    hwcounter_t inst, cycle, time;
+
+    shared_mem_t buffer = {
+        .local = NULL,
+        .remote = NULL,
+        .num_pages = 1,
+        .page_bits = seL4_PageBits,
+    };
+
+    init_buffer(&buffer);
+
+    /* Start measurements */
+    RDINSTRET(inst.start);
+    RDCYCLE(cycle.start);
+    RDTIME(time.start);
+
+    /* Touch the buffer with the specified size once */
+    memset(buffer.local, 0x41, size);
+
+    /* Setup data to pass along with the IPC */
+    task_t task = EVAL_TLB;
+    seL4_Word addr = (seL4_Word)buffer.remote;
+    seL4_SetMR(0, (seL4_Word)task);
+    seL4_SetMR(1, addr);
+    seL4_SetMR(2, size);
+    seL4_MessageInfo_t msginfo = seL4_MessageInfo_new(0xdeadbeef, 0, 0, 3);
+    /* Call into the second process and wait for its response */
+    msginfo = seL4_Call(endpoint, msginfo);
+
+    /* End measurements */
+    RDINSTRET(inst.end);
+    RDCYCLE(cycle.end);
+    RDTIME(time.end);
+
+    DEBUGPRINT("Received answer with label 0x%x\n", seL4_MessageInfo_get_label(msginfo));
+
+    teardown_buffer(&buffer);
+
+    printf("IPC Evaluation run with buffer size 0x%x bytes\n", size);
+    printf("Metric               Value\n");
+    printf("--------------------------\n");
+    printf("Instructions    %10d\n", inst.end - inst.start);
+    printf("Cycles          %10d\n", cycle.end - cycle.start);
+    printf("Time            %10d\n\n", time.end - time.start);
+}
+
+/* Make an evaluation run with the specified number of pages for the shared buffer => focus on address translation */
+void run_tlb_eval(seL4_CPtr endpoint, seL4_Word num_pages, seL4_Word page_bits) {
     hwcounter_t inst, cycle, time;
 
     shared_mem_t buffer = {
@@ -109,11 +169,14 @@ void run_eval(seL4_CPtr endpoint, seL4_Word num_pages, seL4_Word page_bits) {
     RDCYCLE(cycle.start);
     RDTIME(time.start);
 
-    /* Touch the full buffer once */
-    memset(buffer.local, 0x41, buffer.num_pages * BIT(buffer.page_bits));
+    /* Touch each page of the buffer once to force address translation */
+    char *buf = (char *)buffer.local;
+    for (int i = 0; i < buffer.num_pages; i++) {
+        buf[i * BIT(buffer.page_bits)] = 0x41;
+    }
 
     /* Setup data to pass along with the IPC */
-    task_t task = EVAL_IPC;
+    task_t task = EVAL_TLB;
     seL4_Word addr = (seL4_Word)buffer.remote;
     seL4_Word size = buffer.num_pages * BIT(buffer.page_bits);
     seL4_SetMR(0, (seL4_Word)task);
@@ -132,7 +195,7 @@ void run_eval(seL4_CPtr endpoint, seL4_Word num_pages, seL4_Word page_bits) {
 
     teardown_buffer(&buffer);
 
-    printf("Evaluation run with buffer size 0x%x bytes\n", size);
+    printf("TLB Evaluation run with buffer size 0x%x bytes\n", size);
     printf("Metric               Value\n");
     printf("--------------------------\n");
     printf("Instructions    %10d\n", inst.end - inst.start);
