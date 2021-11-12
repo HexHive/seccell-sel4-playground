@@ -15,13 +15,13 @@ typedef struct {
 } hwcounter_t;
 
 typedef struct {
-    seL4_Word base_addr, size;
-} vma_t;
+    void *addr;
+    seL4_Word size;
+} shared_mem_t;
 
 typedef struct {
-    vma_t vma;
     task_t task;
-    hwcounter_t inst, cycle, time;
+    shared_mem_t buf;
 } eval_run_t;
 
 /* Macros */
