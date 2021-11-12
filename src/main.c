@@ -8,9 +8,6 @@
 #include <sel4utils/process.h>
 #include <sel4utils/util.h>
 #include <sel4utils/vspace.h>
-#include <simple-default/simple-default.h>
-#include <simple/simple.h>
-#include <stdbool.h>
 #include <stdio.h>
 #include <utils/util.h>
 #include <vka/object.h>
@@ -25,7 +22,6 @@
 #define ALLOCATOR_STATIC_POOL_SIZE (BIT(seL4_PageBits) * 50)
 static char allocator_mem_pool[ALLOCATOR_STATIC_POOL_SIZE];
 /* Global allocator state */
-simple_t simple;
 vka_t vka;
 allocman_t *allocman;
 vspace_t vspace;
@@ -69,11 +65,13 @@ int main(int argc, char *argv[]) {
     }
     debug_print_bootinfo(info);
 
+    /* Set up benchmark environment (second process, IPC endpoints) */
     seL4_CPtr endpoint;
     init_allocator(info);
     endpoint = init_endpoint();
     init_client(endpoint);
 
+    /* Do the benchmarking */
     for (int i = 0; i < RUNS; i++) {
         run_eval(endpoint, BUFSIZES[i].num_pages, BUFSIZES[i].page_bits);
     }
@@ -146,11 +144,8 @@ void run_eval(seL4_CPtr endpoint, seL4_Word num_pages, seL4_Word page_bits) {
 
 /* Initialize an allocator with seL4_utils for easier object creation and manipulation */
 void init_allocator(seL4_BootInfo *info) {
-    /* Initialize simple */
-    simple_default_init_bootinfo(&simple, info);
-
     /* Setup the allocator with some static memory */
-    allocman = bootstrap_use_current_simple(&simple, ALLOCATOR_STATIC_POOL_SIZE, allocator_mem_pool);
+    allocman = bootstrap_use_bootinfo(info, ALLOCATOR_STATIC_POOL_SIZE, allocator_mem_pool);
     assert(allocman);
     allocman_make_vka(&vka, allocman);
 
@@ -178,8 +173,9 @@ seL4_CPtr init_endpoint(void) {
 /* Initialize another process (own CSpace, own VSpace, minted endpoint capability) and run it */
 void init_client(seL4_CPtr base_ep) {
     /* Load ELF from CPIO archive and configure new process */
-    sel4utils_process_config_t config = process_config_default_simple(&simple, "client", seL4_MaxPrio);
-    config = process_config_auth(config, simple_get_tcb(&simple));
+    sel4utils_process_config_t config = process_config_default("client", seL4_CapInitThreadASIDPool);
+    config = process_config_priority(config, seL4_MaxPrio);
+    config = process_config_auth(config, seL4_CapInitThreadTCB);
     int error = sel4utils_configure_process_custom(&new_process, &vka, &vspace, config);
     assert(error == 0);
 
