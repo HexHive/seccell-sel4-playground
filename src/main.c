@@ -17,6 +17,15 @@
 #define CONTEXT_VADDR 0xF000000
 #define NUM_SECDIVS 2 /* Number of userspace SecDivs (including the initially running SecDiv) */
 
+void run_ipc_eval(seL4_BootInfo *info, seL4_Word size);
+void run_tlb_eval(seL4_BootInfo *info, seL4_Word size);
+void *eval_client(void *args);
+void eval_ipc(void *buf, size_t bufsize);
+void eval_tlb(void *buf, size_t bufsize);
+void init_client(void);
+seL4_CPtr init_buffer(seL4_BootInfo *info, shared_mem_t *buf);
+void teardown_buffer(seL4_CPtr buf_cap);
+
 const seL4_Word IPC_BUFSIZES[] = {
     0x00001, /*    1 B         */
     0x00010, /*   16 B         */
@@ -44,14 +53,8 @@ const vma_t TLB_BUFSIZES[] = {
 };
 #define TLB_RUNS (sizeof(TLB_BUFSIZES) / sizeof(*TLB_BUFSIZES))
 
-void run_ipc_eval(seL4_BootInfo *info, seL4_Word size);
-void run_tlb_eval(seL4_BootInfo *info, seL4_Word size);
-void *eval_client(void *args);
-void eval_ipc(void *buf, size_t bufsize);
-void eval_tlb(void *buf, size_t bufsize);
-void init_client(void);
-seL4_CPtr init_buffer(seL4_BootInfo *info, shared_mem_t *buf);
-void teardown_buffer(seL4_CPtr buf_cap);
+/* Number of repetitions for the benchmarks */
+#define REPETITIONS 100
 
 seL4_RISCV_RangeTable_AddSecDiv_t secdivs[NUM_SECDIVS];
 eval_run_t *run_args = (eval_run_t *)BASE_VADDR;
@@ -104,13 +107,19 @@ int main(int argc, char *argv[]) {
         grant(&eval_tlb, secdivs[1].id, RT_R | RT_X);
     }
 
-    /* Address translation focused benchmark */
-    for (int i = 0; i < TLB_RUNS; i++) {
-        run_tlb_eval(info, TLB_BUFSIZES[i].num_pages * BIT(TLB_BUFSIZES[i].page_bits));
+    for (int rep = 0; rep < REPETITIONS; rep++) {
+        printf("########## IPC rep %4d ##########\n", rep);
+        /* IPC speed focused benchmark */
+        for (int i = 0; i < IPC_RUNS; i++) {
+            run_ipc_eval(info, IPC_BUFSIZES[i]);
+        }
     }
-    /* IPC speed focused benchmark */
-    for (int i = 0; i < IPC_RUNS; i++) {
-        run_ipc_eval(info, IPC_BUFSIZES[i]);
+    for (int rep = 0; rep < REPETITIONS; rep++) {
+        printf("########## TLB rep %4d ##########\n", rep);
+        /* Address translation focused benchmark */
+        for (int i = 0; i < TLB_RUNS; i++) {
+            run_tlb_eval(info, TLB_BUFSIZES[i].num_pages * BIT(TLB_BUFSIZES[i].page_bits));
+        }
     }
 
     /* Suspend the root server - isn't needed anymore */
