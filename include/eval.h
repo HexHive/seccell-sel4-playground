@@ -15,6 +15,10 @@ typedef struct {
 } hwcounter_t;
 
 typedef struct {
+    seL4_Word num_pages, page_bits;
+} vma_t;
+
+typedef struct {
     void *addr;
     seL4_Word size;
 } shared_mem_t;
