@@ -61,6 +61,9 @@ const vma_t TLB_BUFSIZES[] = {
 };
 #define TLB_RUNS (sizeof(TLB_BUFSIZES) / sizeof(*TLB_BUFSIZES))
 
+/* Number of repetitions for the benchmarks */
+#define REPETITIONS 100
+
 int main(int argc, char *argv[]) {
     /* Parse the location of the seL4_BootInfo data structure from
        the environment variables set up by the default crt0.S */
@@ -79,11 +82,19 @@ int main(int argc, char *argv[]) {
     init_client(endpoint);
 
     /* Do the benchmarking */
-    for (int i = 0; i < TLB_RUNS; i++) {
-        run_tlb_eval(endpoint, TLB_BUFSIZES[i].num_pages, TLB_BUFSIZES[i].page_bits);
+    for (int rep = 0; rep < REPETITIONS; rep++) {
+        printf("########## IPC rep %4d ##########\n", rep);
+        /* IPC speed focused benchmark */
+        for (int i = 0; i < IPC_RUNS; i++) {
+            run_ipc_eval(endpoint, IPC_BUFSIZES[i]);
+        }
     }
-    for (int i = 0; i < IPC_RUNS; i++) {
-        run_ipc_eval(endpoint, IPC_BUFSIZES[i]);
+    for (int rep = 0; rep < REPETITIONS; rep++) {
+        printf("########## TLB rep %4d ##########\n", rep);
+        /* Address translation focused benchmark */
+        for (int i = 0; i < TLB_RUNS; i++) {
+            run_tlb_eval(endpoint, TLB_BUFSIZES[i].num_pages, TLB_BUFSIZES[i].page_bits);
+        }
     }
 
     /* Stop the second process - expects 3 arguments */
