@@ -78,6 +78,7 @@ int main(int argc, char *argv[]) {
         seL4_CPtr shared_buf = alloc_object(info, seL4_RISCV_RangeObject, buf_size);
         /* Initialize run-specific arguments and transfer permissions to runner thread */
         run_args->vma.size = buf_size;
+        run_args->task = EVAL_IPC;
         /* Shared buffer setup */
         error = seL4_RISCV_Range_Map(shared_buf, seL4_CapInitThreadVSpace, run_args->vma.base_addr, seL4_ReadWrite,
                                      seL4_RISCV_Default_VMAttributes);
