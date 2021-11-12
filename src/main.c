@@ -17,9 +17,9 @@
 #include "eval.h"
 
 /* Dimensions of virtual memory for the allocator to use */
-#define ALLOCATOR_VIRTUAL_POOL_SIZE (BIT(seL4_PageBits) * 100)
+#define ALLOCATOR_VIRTUAL_POOL_SIZE (BIT(seL4_PageBits) * 600)
 /* Static memory for the allocator to bootstrap with */
-#define ALLOCATOR_STATIC_POOL_SIZE (BIT(seL4_PageBits) * 50)
+#define ALLOCATOR_STATIC_POOL_SIZE (BIT(seL4_PageBits) * 10)
 static char allocator_mem_pool[ALLOCATOR_STATIC_POOL_SIZE];
 /* Global allocator state */
 vka_t vka;
@@ -41,16 +41,14 @@ void teardown_buffer(shared_mem_t *buf);
  * 2 MiB <==> seL4_LargePageBits
  * 1 GiB <==> seL4_HugePageBits
  */
-
 const vma_t BUFSIZES[] = {
     /* {num_pages, page_bits} */
-    {1, seL4_PageBits},        /*   4 KiB */
-    {16, seL4_PageBits},       /*  64 KiB */
-    {25, seL4_PageBits},       /* 100 KiB */
-    {256, seL4_PageBits},      /*   1 MiB */
-    {4, seL4_LargePageBits},   /*   8 MiB */
-    {50, seL4_LargePageBits},  /* 100 MiB */
-    {256, seL4_LargePageBits}, /* 512 MiB */
+    {0x00001, seL4_PageBits}, /*   4 KiB */
+    {0x00010, seL4_PageBits}, /*  64 KiB */
+    {0x00019, seL4_PageBits}, /* 100 KiB */
+    {0x00100, seL4_PageBits}, /*   1 MiB */
+    {0x00800, seL4_PageBits}, /*   8 MiB */
+    {0x02000, seL4_PageBits}, /*  32 MiB */
 };
 #define RUNS (sizeof(BUFSIZES) / sizeof(*BUFSIZES))
 
