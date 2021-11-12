@@ -73,7 +73,9 @@ int main(int argc, char *argv[]) {
         /* Error occured during setup => terminate */
         return 1;
     }
+#if DEBUG
     debug_print_bootinfo(info);
+#endif /* DEBUG */
 
     /* Set up benchmark environment (second process, IPC endpoints) */
     seL4_CPtr endpoint;
