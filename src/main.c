@@ -269,7 +269,7 @@ void init_client(seL4_CPtr base_ep) {
     assert(error == 0);
 }
 
-/* Create capabilities for a buffer of specified size and map it at the specified virtual memory address */
+/* Create capabilities for a buffer of specified size and map it into virtual memory at any available virtual address */
 void init_buffer(shared_mem_t *buf) {
     /* Map contiguous range in the current VSpace */
     buf->local = vspace_new_pages(&vspace, seL4_ReadWrite, buf->num_pages, buf->page_bits);
