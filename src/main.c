@@ -10,6 +10,7 @@
 
 #include "alloc.h"
 #include "eval.h"
+#include "debug.h"
 
 #define BASE_VADDR    0xA000000
 #define CONTEXT_VADDR 0xB000000
@@ -42,7 +43,9 @@ int main(int argc, char *argv[]) {
         /* Error occured during setup => terminate */
         return 1;
     }
+#if DEBUG
     debug_print_bootinfo(info);
+#endif /* DEBUG */
 
     /* Want to have at least 3 SecDivs: the initial one plus two SecDivs communicating */
     assert(NUM_SECDIVS >= 3);
@@ -148,7 +151,7 @@ void setup_secdivs(void) {
     for (int i = 1; i < NUM_SECDIVS; i++) {
         secdivs[i] = seL4_RISCV_RangeTable_AddSecDiv(seL4_CapInitThreadVSpace);
         ZF_LOGF_IF(secdivs[i].error != seL4_NoError, "Failed to create new SecDiv");
-        printf("Created new SecDiv with ID %d\n", secdivs[i].id);
+        DEBUGPRINT("Created new SecDiv with ID %d\n", secdivs[i].id);
     }
 }
 
