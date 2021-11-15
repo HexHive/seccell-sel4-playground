@@ -31,7 +31,7 @@ typedef struct {
 /* Macros */
 #define RDINSTRET(counter)        \
     do {                          \
-        asm(                      \
+        asm volatile(                      \
             "rdinstret %[ctr]"    \
             : [ctr] "=r"(counter) \
             :);                   \
@@ -39,7 +39,7 @@ typedef struct {
 
 #define RDCYCLE(counter)          \
     do {                          \
-        asm(                      \
+        asm volatile(                      \
             "rdcycle %[ctr]"      \
             : [ctr] "=r"(counter) \
             :);                   \
@@ -47,7 +47,7 @@ typedef struct {
 
 #define RDTIME(counter)           \
     do {                          \
-        asm(                      \
+        asm volatile(                      \
             "rdtime %[ctr]"       \
             : [ctr] "=r"(counter) \
             :);                   \
