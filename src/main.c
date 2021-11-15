@@ -20,8 +20,10 @@
 
 /* Function prototypes */
 void run_raw_switch_eval(void);
+void run_context_switch_eval(void);
 void run_ipc_eval(seL4_BootInfo *info, seL4_Word size);
 void run_tlb_eval(seL4_BootInfo *info, seL4_Word size);
+void *eval_context_switch(void *args);
 void *eval_client(void *args);
 void eval_ipc(void *buf, size_t bufsize);
 void eval_tlb(void *buf, size_t bufsize);
@@ -112,7 +114,10 @@ int main(int argc, char *argv[]) {
         grant(&eval_tlb, secdivs[1].id, RT_R | RT_X);
     }
 
+    /* Evaluate the raw SecDiv switching performance */
     run_raw_switch_eval();
+    /* Evaluate the SecDiv switching performance with context save and restore */
+    run_context_switch_eval();
 
     // for (int rep = 0; rep < REPETITIONS; rep++) {
     //     printf("########## IPC rep %4d ##########\n", rep);
@@ -137,7 +142,7 @@ int main(int argc, char *argv[]) {
 
 /* Evaluate performance of just switching back and forth between SecDivs */
 void run_raw_switch_eval(void) {
-    hwcounter_t inst, cycle, time;
+    register hwcounter_t inst, cycle, time;
 
     /* Have to grant read-execute permissions for the other SecDiv to execute the code */
     int cnt = 0;
@@ -167,13 +172,53 @@ void run_raw_switch_eval(void) {
               [cyclestart] "=&r"(cycle.start), [cycleend] "=&r"(cycle.end)
             : [sd1] "r"(secdivs[0].id), [sd2] "r"(secdivs[1].id));
 
-        printf("Raw switch Evaluation run %d\n", rep + 1);
+        printf("Raw switch evaluation run %d\n", rep + 1);
         printf("Metric               Value\n");
         printf("--------------------------\n");
         printf("Instructions    %10d\n", inst.end - inst.start);
         printf("Cycles          %10d\n", cycle.end - cycle.start);
         printf("Time            %10d\n\n", time.end - time.start);
     }
+}
+
+/* Evaluate performance of switching back and forth between SecDivs with storing and restoring contexts in between */
+void __attribute__((optimize(2))) run_context_switch_eval(void) {
+    register hwcounter_t inst, cycle, time;
+
+    /* Have to grant read-execute permissions for the other SecDiv to execute the code */
+    int cnt = 0;
+    count(cnt, &eval_context_switch, RT_R | RT_X);
+    if (cnt == 1) {
+        /* Second thread doesn't have access yet => grant executable permissions */
+        grant(&run_raw_switch_eval, secdivs[1].id, RT_R | RT_X);
+    }
+
+    for (int rep = 0; rep < REPETITIONS; rep++) {
+        /* Start measurements */
+        RDTIME(time.start);
+        RDINSTRET(inst.start);
+        RDCYCLE(cycle.start);
+
+        /* Switch context (with empty arguments) */
+        scthreads_call(secdivs[1].id, &eval_context_switch, NULL);
+
+        /* End performance counters */
+        RDCYCLE(cycle.end);
+        RDINSTRET(inst.end);
+        RDTIME(time.end);
+
+        printf("Empty context switch evaluation run %d\n", rep + 1);
+        printf("Metric               Value\n");
+        printf("--------------------------\n");
+        printf("Instructions    %10d\n", inst.end - inst.start);
+        printf("Cycles          %10d\n", cycle.end - cycle.start);
+        printf("Time            %10d\n\n", time.end - time.start);
+    }
+}
+
+/* Entry point for second SecDiv with its own context */
+void __attribute__((optimize(2))) *eval_context_switch(void *args) {
+    scthreads_return(NULL);
 }
 
 /* Make an evaluation run with the specified shared buffer size => focus on IPC/thread switching speed */
