@@ -12,11 +12,14 @@
 #include "debug.h"
 #include "eval.h"
 
+/* General defines and macros */
 #define BASE_VADDR 0xA000000
 #define BUFFER_VADDR (BASE_VADDR + BIT(seL4_MinRangeBits))
 #define CONTEXT_VADDR 0xF000000
 #define NUM_SECDIVS 2 /* Number of userspace SecDivs (including the initially running SecDiv) */
 
+/* Function prototypes */
+void run_raw_switch_eval(void);
 void run_ipc_eval(seL4_BootInfo *info, seL4_Word size);
 void run_tlb_eval(seL4_BootInfo *info, seL4_Word size);
 void *eval_client(void *args);
@@ -25,6 +28,11 @@ void eval_tlb(void *buf, size_t bufsize);
 void init_client(void);
 seL4_CPtr init_buffer(seL4_BootInfo *info, shared_mem_t *buf);
 void teardown_buffer(seL4_CPtr buf_cap);
+
+/* Benchmark specific globals, defines, macros */
+
+/* Number of repetitions for the benchmarks */
+#define REPETITIONS 100
 
 const seL4_Word IPC_BUFSIZES[] = {
     0x00001, /*    1 B         */
@@ -52,9 +60,6 @@ const vma_t TLB_BUFSIZES[] = {
     {0x02000, seL4_PageBits}, /*  32 MiB */
 };
 #define TLB_RUNS (sizeof(TLB_BUFSIZES) / sizeof(*TLB_BUFSIZES))
-
-/* Number of repetitions for the benchmarks */
-#define REPETITIONS 100
 
 seL4_RISCV_RangeTable_AddSecDiv_t secdivs[NUM_SECDIVS];
 eval_run_t *run_args = (eval_run_t *)BASE_VADDR;
@@ -107,25 +112,68 @@ int main(int argc, char *argv[]) {
         grant(&eval_tlb, secdivs[1].id, RT_R | RT_X);
     }
 
-    for (int rep = 0; rep < REPETITIONS; rep++) {
-        printf("########## IPC rep %4d ##########\n", rep);
-        /* IPC speed focused benchmark */
-        for (int i = 0; i < IPC_RUNS; i++) {
-            run_ipc_eval(info, IPC_BUFSIZES[i]);
-        }
-    }
-    for (int rep = 0; rep < REPETITIONS; rep++) {
-        printf("########## TLB rep %4d ##########\n", rep);
-        /* Address translation focused benchmark */
-        for (int i = 0; i < TLB_RUNS; i++) {
-            run_tlb_eval(info, TLB_BUFSIZES[i].num_pages * BIT(TLB_BUFSIZES[i].page_bits));
-        }
-    }
+    run_raw_switch_eval();
+
+    // for (int rep = 0; rep < REPETITIONS; rep++) {
+    //     printf("########## IPC rep %4d ##########\n", rep);
+    //     /* IPC speed focused benchmark */
+    //     for (int i = 0; i < IPC_RUNS; i++) {
+    //         run_ipc_eval(info, IPC_BUFSIZES[i]);
+    //     }
+    // }
+    // for (int rep = 0; rep < REPETITIONS; rep++) {
+    //     printf("########## TLB rep %4d ##########\n", rep);
+    //     /* Address translation focused benchmark */
+    //     for (int i = 0; i < TLB_RUNS; i++) {
+    //         run_tlb_eval(info, TLB_BUFSIZES[i].num_pages * BIT(TLB_BUFSIZES[i].page_bits));
+    //     }
+    // }
 
     /* Suspend the root server - isn't needed anymore */
     seL4_TCB_Suspend(seL4_CapInitThreadTCB);
 
     return 0;
+}
+
+/* Evaluate performance of just switching back and forth between SecDivs */
+void run_raw_switch_eval(void) {
+    hwcounter_t inst, cycle, time;
+
+    /* Have to grant read-execute permissions for the other SecDiv to execute the code */
+    int cnt = 0;
+    count(cnt, &run_raw_switch_eval, RT_R | RT_X);
+    if (cnt == 1) {
+        /* Second thread doesn't have access yet => grant executable permissions */
+        grant(&run_raw_switch_eval, secdivs[1].id, RT_R | RT_X);
+    }
+
+    for (int rep = 0; rep < REPETITIONS; rep++) {
+        /* Inline ASM to force gcc to not introduce lots of loads and stores */
+        asm(
+            "rdtime %[timestart]        \n\t"
+            "rdinstret %[inststart]     \n\t"
+            "rdcycle %[cyclestart]      \n\t"
+            "jals %[sd2], .sd1          \n"
+            ".sd1:                      \n\t"
+            "entry                      \n\t"
+            "jals %[sd1], .sd2          \n"
+            ".sd2:                      \n\t"
+            "entry                      \n\t"
+            "rdcycle %[cycleend]        \n\t"
+            "rdinstret %[instend]       \n\t"
+            "rdtime %[timeend]          \n\t"
+            : [timestart] "=&r"(time.start), [timeend] "=&r"(time.end),
+              [inststart] "=&r"(inst.start), [instend] "=&r"(inst.end),
+              [cyclestart] "=&r"(cycle.start), [cycleend] "=&r"(cycle.end)
+            : [sd1] "r"(secdivs[0].id), [sd2] "r"(secdivs[1].id));
+
+        printf("Raw switch Evaluation run %d\n", rep + 1);
+        printf("Metric               Value\n");
+        printf("--------------------------\n");
+        printf("Instructions    %10d\n", inst.end - inst.start);
+        printf("Cycles          %10d\n", cycle.end - cycle.start);
+        printf("Time            %10d\n\n", time.end - time.start);
+    }
 }
 
 /* Make an evaluation run with the specified shared buffer size => focus on IPC/thread switching speed */
