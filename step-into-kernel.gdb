@@ -15,10 +15,10 @@ add-symbol-file seL4-playground
 
 # Break at jump to kernel
 # Adapt offset in elfloader binary, if necessary
-b *payload_bin+0x8b4
+b *payload_bin+0x8e0
 # Run and clear breakpoint, don't need it anymore
 c
-clear *payload_bin+0x8b4
+clear *payload_bin+0x8e0
 # Step into kernel
 si
 
