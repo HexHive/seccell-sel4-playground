@@ -12,7 +12,7 @@
 void eval_ipc(void *buf, size_t bufsize);
 void eval_tlb(void *buf, size_t bufsize);
 
-int main(int argc, char *argv[]) {
+int __attribute__((optimize(2))) main(int argc, char *argv[]) {
     /* Setup serial output via seL4_Debug_PutChar */
     if (platsupport_serial_setup_bootinfo_failsafe()) {
         /* Error occured during setup => terminate */
@@ -76,12 +76,12 @@ int main(int argc, char *argv[]) {
 }
 
 /* Evaluate IPC: only done on small buffers, access the full buffer */
-void eval_ipc(void *buf, size_t bufsize) {
+void __attribute__((optimize(2))) eval_ipc(void *buf, size_t bufsize) {
     memset(buf, 0x61, bufsize);
 }
 
 /* Evaluate TLB reach: big buffers, only touch a single byte per page to force address translation */
-void eval_tlb(void *buf, size_t bufsize) {
+void __attribute__((optimize(2))) eval_tlb(void *buf, size_t bufsize) {
     char *charbuf = (char *)buf;
     for (size_t i = 0; i < bufsize; i += BIT(seL4_PageBits)) {
         charbuf[i] = 0x61;
