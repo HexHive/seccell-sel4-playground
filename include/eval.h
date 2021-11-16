@@ -20,13 +20,8 @@ typedef struct {
 
 typedef struct {
     void *addr;
-    seL4_Word size;
+    size_t size;
 } shared_mem_t;
-
-typedef struct {
-    task_t task;
-    shared_mem_t buf;
-} eval_run_t;
 
 /* Macros */
 #define RDINSTRET(counter)        \

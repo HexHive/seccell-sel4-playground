@@ -21,11 +21,11 @@
 /* Function prototypes */
 void run_raw_switch_eval(void);
 void run_context_switch_eval(void);
-void run_ipc_eval(seL4_BootInfo *info, seL4_Word size);
+void run_ipc_eval(void *addr, size_t size);
 void run_tlb_eval(seL4_BootInfo *info, seL4_Word size);
 void *eval_context_switch(void *args);
 void *eval_client(void *args);
-void eval_ipc(void *buf, size_t bufsize);
+void *eval_ipc(void *args);
 void eval_tlb(void *buf, size_t bufsize);
 void init_client(void);
 seL4_CPtr init_buffer(seL4_BootInfo *info, shared_mem_t *buf);
@@ -64,7 +64,7 @@ const vma_t TLB_BUFSIZES[] = {
 #define TLB_RUNS (sizeof(TLB_BUFSIZES) / sizeof(*TLB_BUFSIZES))
 
 seL4_RISCV_RangeTable_AddSecDiv_t secdivs[NUM_SECDIVS];
-eval_run_t *run_args = (eval_run_t *)BASE_VADDR;
+shared_mem_t *run_args = (shared_mem_t *)BASE_VADDR;
 
 int main(int argc, char *argv[]) {
     /* Parse the location of the seL4_BootInfo data structure from
@@ -89,35 +89,33 @@ int main(int argc, char *argv[]) {
     scthreads_init_contexts(info, (void *)CONTEXT_VADDR, max_secdiv_id);
 
     /* Map a read-write 4k range for the evaluation run arguments to pass to the second thread */
-    seL4_CPtr range = alloc_object(info, seL4_RISCV_RangeObject, BIT(seL4_MinRangeBits));
-    seL4_Error error = seL4_RISCV_Range_Map(range, seL4_CapInitThreadVSpace, (seL4_Word)run_args, seL4_ReadWrite,
+    seL4_CPtr arg_cap = alloc_object(info, seL4_RISCV_RangeObject, BIT(seL4_MinRangeBits));
+    seL4_Error error = seL4_RISCV_Range_Map(arg_cap, seL4_CapInitThreadVSpace, (seL4_Word)run_args, seL4_ReadWrite,
                                             seL4_RISCV_Default_VMAttributes);
     ZF_LOGF_IF(error != seL4_NoError, "Failed to map range @ %p", run_args);
 
-    /* Have to grant read-execute permissions for the other SecDiv to execute the code */
-    int cnt = -1;
-    count(cnt, &eval_client, RT_R | RT_X);
-    if (cnt == 1) {
-        /* Second thread doesn't have access yet => grant executable permissions */
-        grant(&eval_client, secdivs[1].id, RT_R | RT_X);
-    }
-    cnt = -1;
-    count(cnt, &eval_ipc, RT_R | RT_X);
-    if (cnt == 1) {
-        /* Second thread doesn't have access yet => grant executable permissions */
-        grant(&eval_ipc, secdivs[1].id, RT_R | RT_X);
-    }
-    cnt = -1;
-    count(cnt, &eval_tlb, RT_R | RT_X);
-    if (cnt == 1) {
-        /* Second thread doesn't have access yet => grant executable permissions */
-        grant(&eval_tlb, secdivs[1].id, RT_R | RT_X);
-    }
+    /*
+     * Map a read-write range with the maximum size needed for the evaluation runs to pass to the second thread
+     * We are just mapping a single big enough range because the range size has neither an influence on thread switching
+     * speed (we're only passing along a pointer to it anyway) nor on address translation (address translation happens
+     * on a per-range basis and we'll only access a single range in any case)
+     */
+    void *addr = (void *)BUFFER_VADDR;
+    size_t size = ROUND_UP(TLB_BUFSIZES[TLB_RUNS - 1].num_pages * BIT(TLB_BUFSIZES[TLB_RUNS - 1].num_pages),
+                           BIT(seL4_MinRangeBits));
+    seL4_CPtr buf_cap = alloc_object(info, seL4_RISCV_RangeObject, (seL4_Word)size);
+    error = seL4_RISCV_Range_Map(buf_cap, seL4_CapInitThreadVSpace, (seL4_Word)addr, seL4_ReadWrite,
+                                 seL4_RISCV_Default_VMAttributes);
+    ZF_LOGF_IF(error != seL4_NoError, "Failed to map range @ %p", addr);
 
     /* Evaluate the raw SecDiv switching performance */
     run_raw_switch_eval();
     /* Evaluate the SecDiv switching performance with context save and restore */
     run_context_switch_eval();
+    /* Evaluate the SecDiv switching performance with context save and restore and a small buffer passed along */
+    for (int i = 0; i < IPC_RUNS; i++) {
+        run_ipc_eval(addr, IPC_BUFSIZES[i]);
+    }
 
     // for (int rep = 0; rep < REPETITIONS; rep++) {
     //     printf("########## IPC rep %4d ##########\n", rep);
@@ -141,7 +139,7 @@ int main(int argc, char *argv[]) {
 }
 
 /* Evaluate performance of just switching back and forth between SecDivs */
-void run_raw_switch_eval(void) {
+void __attribute__((optimize(2))) run_raw_switch_eval(void) {
     register hwcounter_t inst, cycle, time;
 
     /* Have to grant read-execute permissions for the other SecDiv to execute the code */
@@ -190,7 +188,7 @@ void __attribute__((optimize(2))) run_context_switch_eval(void) {
     count(cnt, &eval_context_switch, RT_R | RT_X);
     if (cnt == 1) {
         /* Second thread doesn't have access yet => grant executable permissions */
-        grant(&run_raw_switch_eval, secdivs[1].id, RT_R | RT_X);
+        grant(&eval_context_switch, secdivs[1].id, RT_R | RT_X);
     }
 
     for (int rep = 0; rep < REPETITIONS; rep++) {
@@ -221,138 +219,148 @@ void __attribute__((optimize(2))) *eval_context_switch(void *args) {
     scthreads_return(NULL);
 }
 
-/* Make an evaluation run with the specified shared buffer size => focus on IPC/thread switching speed */
-void run_ipc_eval(seL4_BootInfo *info, seL4_Word size) {
-    hwcounter_t inst, cycle, time;
+/* Make an evaluation run with the specified shared buffer size => target IPC/thread switching speed w/ data passing */
+void __attribute__((optimize(2))) run_ipc_eval(void *addr, size_t size) {
+    register hwcounter_t inst, cycle, time;
 
-    /* Make sure the run_args are clean/empty before we run the evaluation */
-    memset((void *)run_args, 0, sizeof(eval_run_t));
-    /* Set up shared buffer */
-    shared_mem_t buf = {
-        .addr = (void *)BUFFER_VADDR,
-        .size = size,
-    };
-    seL4_CPtr buf_cap = init_buffer(info, &buf);
-
-    /* Start measurements */
-    RDINSTRET(inst.start);
-    RDCYCLE(cycle.start);
-    RDTIME(time.start);
-
-    /* Touch the buffer with the specified size once */
-    memset(buf.addr, 0x41, buf.size);
-
-    /* Setup data to pass along with the SecDiv switch and adapt permissions */
-    run_args->task = EVAL_IPC;
-    run_args->buf = buf;
-    tfer(run_args->buf.addr, secdivs[1].id, RT_R | RT_W);
-    tfer(run_args, secdivs[1].id, RT_R | RT_W);
-
-    scthreads_call(secdivs[1].id, &eval_client, (void *)run_args);
-
-    /* End performance counters */
-    RDINSTRET(inst.end);
-    RDCYCLE(cycle.end);
-    RDTIME(time.end);
-
-    teardown_buffer(buf_cap);
-
-    printf("IPC Evaluation run with buffer size 0x%x bytes\n", size);
-    printf("Metric               Value\n");
-    printf("--------------------------\n");
-    printf("Instructions    %10d\n", inst.end - inst.start);
-    printf("Cycles          %10d\n", cycle.end - cycle.start);
-    printf("Time            %10d\n\n", time.end - time.start);
-}
-
-/* Make an evaluation run where we only sparsely touch the buffer => focus on address translation */
-void run_tlb_eval(seL4_BootInfo *info, seL4_Word size) {
-    hwcounter_t inst, cycle, time;
-
-    /* Make sure the run_args are clean/empty before we run the evaluation */
-    memset((void *)run_args, 0, sizeof(eval_run_t));
-    /* Set up shared buffer */
-    shared_mem_t buf = {
-        .addr = (void *)BUFFER_VADDR,
-        .size = size,
-    };
-    seL4_CPtr buf_cap = init_buffer(info, &buf);
-
-    /* Start measurements */
-    RDINSTRET(inst.start);
-    RDCYCLE(cycle.start);
-    RDTIME(time.start);
-
-    /* Touch only each 4096th byte of the buffer once to force address translation */
-    char *charbuf = (char *)buf.addr;
-    for (size_t i = 0; i < buf.size; i += BIT(seL4_PageBits)) {
-        charbuf[i] = 0x41;
+    /* Have to grant read-execute permissions for the other SecDiv to execute the code */
+    int cnt = 0;
+    count(cnt, &eval_ipc, RT_R | RT_X);
+    if (cnt == 1) {
+        /* Second thread doesn't have access yet => grant executable permissions */
+        grant(&eval_ipc, secdivs[1].id, RT_R | RT_X);
     }
 
-    /* Setup data to pass along with the SecDiv switch and adapt permissions */
-    run_args->task = EVAL_IPC;
-    run_args->buf = buf;
-    tfer(run_args->buf.addr, secdivs[1].id, RT_R | RT_W);
-    tfer(run_args, secdivs[1].id, RT_R | RT_W);
+    /* Make sure the run_args are clean/empty before we run the evaluation */
+    memset((void *)run_args, 0, sizeof(shared_mem_t));
 
-    scthreads_call(secdivs[1].id, &eval_client, (void *)run_args);
+    for (int rep = 0; rep < REPETITIONS; rep++) {
+        /* Start measurements */
+        RDTIME(time.start);
+        RDINSTRET(inst.start);
+        RDCYCLE(cycle.start);
 
-    /* End performance counters */
-    RDINSTRET(inst.end);
-    RDCYCLE(cycle.end);
-    RDTIME(time.end);
+        /* Touch the buffer with the specified size once */
+        memset(addr, 0x41, size);
 
-    teardown_buffer(buf_cap);
+        /* Setup data to pass along with the SecDiv switch and adapt permissions */
+        run_args->addr = addr;
+        run_args->size = size;
+        tfer(run_args->addr, secdivs[1].id, RT_R | RT_W);
+        tfer(run_args, secdivs[1].id, RT_R | RT_W);
 
-    printf("IPC Evaluation run with buffer size 0x%x bytes\n", size);
-    printf("Metric               Value\n");
-    printf("--------------------------\n");
-    printf("Instructions    %10d\n", inst.end - inst.start);
-    printf("Cycles          %10d\n", cycle.end - cycle.start);
-    printf("Time            %10d\n\n", time.end - time.start);
+        scthreads_call(secdivs[1].id, &eval_ipc, (void *)run_args);
+
+        /* End performance counters */
+        RDCYCLE(cycle.end);
+        RDINSTRET(inst.end);
+        RDTIME(time.end);
+
+        printf("IPC Evaluation run %d with buffer size 0x%x bytes\n", rep + 1, size);
+        printf("Metric               Value\n");
+        printf("--------------------------\n");
+        printf("Instructions    %10d\n", inst.end - inst.start);
+        printf("Cycles          %10d\n", cycle.end - cycle.start);
+        printf("Time            %10d\n\n", time.end - time.start);
+
+    }
 }
 
-/* Dispatch evaluation tasks */
-void *eval_client(void *args) {
-    eval_run_t *run = (eval_run_t *)args;
+/* Entry point for second thread with own context and arguments passed along */
+void *eval_ipc(void *args) {
+    shared_mem_t *run = (shared_mem_t *)args;
 
-    /* Determine what to do based on the task we got transferred */
-    switch (run->task) {
-        case EVAL_IPC: {
-            eval_ipc(run->buf.addr, run->buf.size);
-            break;
-        }
-
-        case EVAL_TLB: {
-            eval_tlb(run->buf.addr, run->buf.size);
-            break;
-        }
-
-        default: {
-            /* Due to covering all enum values, we should never arrive here */
-            UNREACHABLE();
-            break;
-        }
-    }
+    memset(run->addr, 0x61, run->size);
 
     /* Hand control back to calling thread */
-    tfer(run->buf.addr, secdivs[0].id, RT_R | RT_W);
+    tfer(run->addr, secdivs[0].id, RT_R | RT_W);
     tfer(run, secdivs[0].id, RT_R | RT_W);
     scthreads_return(NULL);
 }
 
-/* Evaluate IPC: only done on small buffers, access the full buffer */
-void eval_ipc(void *buf, size_t bufsize) {
-    memset(buf, 0x61, bufsize);
-}
+// /* Make an evaluation run where we only sparsely touch the buffer => focus on address translation */
+// void run_tlb_eval(seL4_BootInfo *info, seL4_Word size) {
+//     hwcounter_t inst, cycle, time;
 
-/* Evaluate TLB reach: big buffers, only touch a single byte per page to force address translation */
-void eval_tlb(void *buf, size_t bufsize) {
-    char *charbuf = (char *)buf;
-    for (size_t i = 0; i < bufsize; i += BIT(seL4_PageBits)) {
-        charbuf[i] = 0x61;
-    }
-}
+//     /* Make sure the run_args are clean/empty before we run the evaluation */
+//     memset((void *)run_args, 0, sizeof(eval_run_t));
+//     /* Set up shared buffer */
+//     shared_mem_t buf = {
+//         .addr = (void *)BUFFER_VADDR,
+//         .size = size,
+//     };
+//     seL4_CPtr buf_cap = init_buffer(info, &buf);
+
+//     /* Start measurements */
+//     RDINSTRET(inst.start);
+//     RDCYCLE(cycle.start);
+//     RDTIME(time.start);
+
+//     /* Touch only each 4096th byte of the buffer once to force address translation */
+//     char *charbuf = (char *)buf.addr;
+//     for (size_t i = 0; i < buf.size; i += BIT(seL4_PageBits)) {
+//         charbuf[i] = 0x41;
+//     }
+
+//     /* Setup data to pass along with the SecDiv switch and adapt permissions */
+//     run_args->task = EVAL_IPC;
+//     run_args->buf = buf;
+//     tfer(run_args->buf.addr, secdivs[1].id, RT_R | RT_W);
+//     tfer(run_args, secdivs[1].id, RT_R | RT_W);
+
+//     scthreads_call(secdivs[1].id, &eval_client, (void *)run_args);
+
+//     /* End performance counters */
+//     RDINSTRET(inst.end);
+//     RDCYCLE(cycle.end);
+//     RDTIME(time.end);
+
+//     teardown_buffer(buf_cap);
+
+//     printf("IPC Evaluation run with buffer size 0x%x bytes\n", size);
+//     printf("Metric               Value\n");
+//     printf("--------------------------\n");
+//     printf("Instructions    %10d\n", inst.end - inst.start);
+//     printf("Cycles          %10d\n", cycle.end - cycle.start);
+//     printf("Time            %10d\n\n", time.end - time.start);
+// }
+
+// /* Dispatch evaluation tasks */
+// void *eval_client(void *args) {
+//     eval_run_t *run = (eval_run_t *)args;
+
+//     /* Determine what to do based on the task we got transferred */
+//     switch (run->task) {
+//         case EVAL_IPC: {
+//             eval_ipc(run->buf.addr, run->buf.size);
+//             break;
+//         }
+
+//         case EVAL_TLB: {
+//             eval_tlb(run->buf.addr, run->buf.size);
+//             break;
+//         }
+
+//         default: {
+//             /* Due to covering all enum values, we should never arrive here */
+//             UNREACHABLE();
+//             break;
+//         }
+//     }
+
+//     /* Hand control back to calling thread */
+//     tfer(run->buf.addr, secdivs[0].id, RT_R | RT_W);
+//     tfer(run, secdivs[0].id, RT_R | RT_W);
+//     scthreads_return(NULL);
+// }
+
+// /* Evaluate TLB reach: big buffers, only touch a single byte per page to force address translation */
+// void eval_tlb(void *buf, size_t bufsize) {
+//     char *charbuf = (char *)buf;
+//     for (size_t i = 0; i < bufsize; i += BIT(seL4_PageBits)) {
+//         charbuf[i] = 0x61;
+//     }
+// }
 
 void init_client(void) {
     /* Save current SecDiv ID => probably the initial SecDiv anyway */
