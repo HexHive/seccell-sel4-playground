@@ -33,12 +33,12 @@ set(KernelPlatform "spike" CACHE STRING "" FORCE)
 set(KernelRiscvExtD ON CACHE BOOL "" FORCE)
 set(KernelRiscvExtF ON CACHE BOOL "" FORCE)
 set(KernelSecCell ON CACHE BOOL "" FORCE)
+set(KernelResetChunkBits "12" CACHE STRING "" FORCE)
 set(KernelOptimisation "-O0" CACHE STRING "" FORCE)
 ApplyData61ElfLoaderSettings(${KernelPlatform} ${KernelSel4Arch})
 
 include(${project_dir}/kernel/configs/seL4Config.cmake)
-set(CapDLLoaderMaxObjects 20000 CACHE STRING "" FORCE)
-set(KernelRootCNodeSizeBits 16 CACHE STRING "")
+set(KernelRootCNodeSizeBits 19 CACHE STRING "")
 
 # Just let the regular abort spin without calling DebugHalt to prevent needless
 # confusing output from the kernel

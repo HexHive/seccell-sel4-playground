@@ -22,11 +22,11 @@
 void run_raw_switch_eval(void);
 void run_context_switch_eval(void);
 void run_ipc_eval(void *addr, size_t size);
-void run_tlb_eval(seL4_BootInfo *info, seL4_Word size);
+void run_tlb_eval(void *addr, size_t size);
 void *eval_context_switch(void *args);
 void *eval_client(void *args);
 void *eval_ipc(void *args);
-void eval_tlb(void *buf, size_t bufsize);
+void *eval_tlb(void *args);
 void init_client(void);
 seL4_CPtr init_buffer(seL4_BootInfo *info, shared_mem_t *buf);
 void teardown_buffer(seL4_CPtr buf_cap);
@@ -101,7 +101,7 @@ int main(int argc, char *argv[]) {
      * on a per-range basis and we'll only access a single range in any case)
      */
     void *addr = (void *)BUFFER_VADDR;
-    size_t size = ROUND_UP(TLB_BUFSIZES[TLB_RUNS - 1].num_pages * BIT(TLB_BUFSIZES[TLB_RUNS - 1].num_pages),
+    size_t size = ROUND_UP(TLB_BUFSIZES[TLB_RUNS - 1].num_pages * BIT(TLB_BUFSIZES[TLB_RUNS - 1].page_bits),
                            BIT(seL4_MinRangeBits));
     seL4_CPtr buf_cap = alloc_object(info, seL4_RISCV_RangeObject, (seL4_Word)size);
     error = seL4_RISCV_Range_Map(buf_cap, seL4_CapInitThreadVSpace, (seL4_Word)addr, seL4_ReadWrite,
@@ -116,21 +116,10 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < IPC_RUNS; i++) {
         run_ipc_eval(addr, IPC_BUFSIZES[i]);
     }
-
-    // for (int rep = 0; rep < REPETITIONS; rep++) {
-    //     printf("########## IPC rep %4d ##########\n", rep);
-    //     /* IPC speed focused benchmark */
-    //     for (int i = 0; i < IPC_RUNS; i++) {
-    //         run_ipc_eval(info, IPC_BUFSIZES[i]);
-    //     }
-    // }
-    // for (int rep = 0; rep < REPETITIONS; rep++) {
-    //     printf("########## TLB rep %4d ##########\n", rep);
-    //     /* Address translation focused benchmark */
-    //     for (int i = 0; i < TLB_RUNS; i++) {
-    //         run_tlb_eval(info, TLB_BUFSIZES[i].num_pages * BIT(TLB_BUFSIZES[i].page_bits));
-    //     }
-    // }
+    /* Evaluate the SecDiv switching performance with context save and restore and a big buffer passed along */
+    for (int i = 0; i < TLB_RUNS; i++) {
+        run_tlb_eval(addr, TLB_BUFSIZES[i].num_pages * BIT(TLB_BUFSIZES[i].page_bits));
+    }
 
     /* Suspend the root server - isn't needed anymore */
     seL4_TCB_Suspend(seL4_CapInitThreadTCB);
@@ -215,7 +204,7 @@ void __attribute__((optimize(2))) run_context_switch_eval(void) {
 }
 
 /* Entry point for second SecDiv with its own context */
-void __attribute__((optimize(2))) *eval_context_switch(void *args) {
+void __attribute__((optimize(2))) * eval_context_switch(void *args) {
     scthreads_return(NULL);
 }
 
@@ -278,90 +267,72 @@ void *eval_ipc(void *args) {
     scthreads_return(NULL);
 }
 
-// /* Make an evaluation run where we only sparsely touch the buffer => focus on address translation */
-// void run_tlb_eval(seL4_BootInfo *info, seL4_Word size) {
-//     hwcounter_t inst, cycle, time;
+/* Make an evaluation run with the specified shared buffer size => target address translation */
+void __attribute__((optimize(2))) run_tlb_eval(void *addr, size_t size) {
+    register hwcounter_t inst, cycle, time;
 
-//     /* Make sure the run_args are clean/empty before we run the evaluation */
-//     memset((void *)run_args, 0, sizeof(eval_run_t));
-//     /* Set up shared buffer */
-//     shared_mem_t buf = {
-//         .addr = (void *)BUFFER_VADDR,
-//         .size = size,
-//     };
-//     seL4_CPtr buf_cap = init_buffer(info, &buf);
+    /* Have to grant read-execute permissions for the other SecDiv to execute the code */
+    int cnt = 0;
+    count(cnt, &eval_tlb, RT_R | RT_X);
+    if (cnt == 1) {
+        /* Second thread doesn't have access yet => grant executable permissions */
+        grant(&eval_tlb, secdivs[1].id, RT_R | RT_X);
+    }
 
-//     /* Start measurements */
-//     RDINSTRET(inst.start);
-//     RDCYCLE(cycle.start);
-//     RDTIME(time.start);
+    /* Make sure the run_args are clean/empty before we run the evaluation */
+    memset((void *)run_args, 0, sizeof(shared_mem_t));
 
-//     /* Touch only each 4096th byte of the buffer once to force address translation */
-//     char *charbuf = (char *)buf.addr;
-//     for (size_t i = 0; i < buf.size; i += BIT(seL4_PageBits)) {
-//         charbuf[i] = 0x41;
-//     }
+    for (int rep = 0; rep < REPETITIONS; rep++) {
+        /* Start measurements */
+        RDTIME(time.start);
+        RDINSTRET(inst.start);
+        RDCYCLE(cycle.start);
 
-//     /* Setup data to pass along with the SecDiv switch and adapt permissions */
-//     run_args->task = EVAL_IPC;
-//     run_args->buf = buf;
-//     tfer(run_args->buf.addr, secdivs[1].id, RT_R | RT_W);
-//     tfer(run_args, secdivs[1].id, RT_R | RT_W);
+        /* Touch only each 4096th byte of the buffer once to force address translation */
+        char *charbuf = (char *)addr;
+        for (size_t i = 0; i < size; i += BIT(seL4_PageBits)) {
+            charbuf[i] = 0x41;
+        }
 
-//     scthreads_call(secdivs[1].id, &eval_client, (void *)run_args);
+        /* Setup data to pass along with the SecDiv switch and adapt permissions */
+        run_args->addr = addr;
+        run_args->size = size;
+        tfer(run_args->addr, secdivs[1].id, RT_R | RT_W);
+        tfer(run_args, secdivs[1].id, RT_R | RT_W);
 
-//     /* End performance counters */
-//     RDINSTRET(inst.end);
-//     RDCYCLE(cycle.end);
-//     RDTIME(time.end);
+        scthreads_call(secdivs[1].id, &eval_tlb, (void *)run_args);
 
-//     teardown_buffer(buf_cap);
+        /* End performance counters */
+        RDCYCLE(cycle.end);
+        RDINSTRET(inst.end);
+        RDTIME(time.end);
 
-//     printf("IPC Evaluation run with buffer size 0x%x bytes\n", size);
-//     printf("Metric               Value\n");
-//     printf("--------------------------\n");
-//     printf("Instructions    %10d\n", inst.end - inst.start);
-//     printf("Cycles          %10d\n", cycle.end - cycle.start);
-//     printf("Time            %10d\n\n", time.end - time.start);
-// }
+        printf("TLB Evaluation run %d with buffer size 0x%x bytes\n", rep + 1, size);
+        printf("Metric               Value\n");
+        printf("--------------------------\n");
+        printf("Instructions    %10d\n", inst.end - inst.start);
+        printf("Cycles          %10d\n", cycle.end - cycle.start);
+        printf("Time            %10d\n\n", time.end - time.start);
+    }
+}
 
-// /* Dispatch evaluation tasks */
-// void *eval_client(void *args) {
-//     eval_run_t *run = (eval_run_t *)args;
+/* Entry point for second thread with own context and arguments passed along */
+void *eval_tlb(void *args) {
+    shared_mem_t *run = (shared_mem_t *)args;
 
-//     /* Determine what to do based on the task we got transferred */
-//     switch (run->task) {
-//         case EVAL_IPC: {
-//             eval_ipc(run->buf.addr, run->buf.size);
-//             break;
-//         }
+    /* Touch only each 4096th byte of the buffer once to force address translation */
+    char *charbuf = (char *)run->addr;
+    for (size_t i = 0; i < run->size; i += BIT(seL4_PageBits)) {
+        charbuf[i] = 0x41;
+    }
 
-//         case EVAL_TLB: {
-//             eval_tlb(run->buf.addr, run->buf.size);
-//             break;
-//         }
+    /* Hand control back to calling thread */
+    tfer(run->addr, secdivs[0].id, RT_R | RT_W);
+    tfer(run, secdivs[0].id, RT_R | RT_W);
+    scthreads_return(NULL);
+}
 
-//         default: {
-//             /* Due to covering all enum values, we should never arrive here */
-//             UNREACHABLE();
-//             break;
-//         }
-//     }
-
-//     /* Hand control back to calling thread */
-//     tfer(run->buf.addr, secdivs[0].id, RT_R | RT_W);
-//     tfer(run, secdivs[0].id, RT_R | RT_W);
-//     scthreads_return(NULL);
-// }
-
-// /* Evaluate TLB reach: big buffers, only touch a single byte per page to force address translation */
-// void eval_tlb(void *buf, size_t bufsize) {
-//     char *charbuf = (char *)buf;
-//     for (size_t i = 0; i < bufsize; i += BIT(seL4_PageBits)) {
-//         charbuf[i] = 0x61;
-//     }
-// }
-
+/* Create more SecDivs */
 void init_client(void) {
     /* Save current SecDiv ID => probably the initial SecDiv anyway */
     csrr_usid(secdivs[0].id);
@@ -371,26 +342,4 @@ void init_client(void) {
         ZF_LOGF_IF(secdivs[i].error != seL4_NoError, "Failed to create new SecDiv");
         DEBUGPRINT("Created new SecDiv with ID %d\n", secdivs[i].id);
     }
-}
-
-/* Create a capability for a buffer of specified size and map it at the specified address */
-seL4_CPtr init_buffer(seL4_BootInfo *info, shared_mem_t *buf) {
-    /* Get a capability for the shared buffer */
-    seL4_CPtr shared_buf = alloc_object(info, seL4_RISCV_RangeObject, ROUND_UP(buf->size, BIT(seL4_MinRangeBits)));
-    /* Shared buffer setup */
-    seL4_Error error = seL4_RISCV_Range_Map(shared_buf, seL4_CapInitThreadVSpace, (seL4_Word)buf->addr, seL4_ReadWrite,
-                                            seL4_RISCV_Default_VMAttributes);
-    ZF_LOGF_IF(error != seL4_NoError, "Failed to map range @ %p", buf->addr);
-
-    return shared_buf;
-}
-
-/* Unmap buffer and free capabilities */
-void teardown_buffer(seL4_CPtr buf_cap) {
-    /* Unmap the buffer */
-    seL4_Error error = seL4_RISCV_Range_Unmap(buf_cap);
-    ZF_LOGF_IF(error != seL4_NoError, "Failed to unmap range");
-    /* Revoke the capability */
-    error = seL4_CNode_Revoke(seL4_CapInitThreadCNode, buf_cap, seL4_WordBits);
-    ZF_LOGF_IF(error != seL4_NoError, "Failed to revoke buffer cap");
 }

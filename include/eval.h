@@ -5,11 +5,6 @@
 #include <sel4/sel4.h>
 
 /* Structs/datatypes */
-
-typedef enum {
-    EVAL_IPC,
-    EVAL_TLB
-} task_t;
 typedef struct {
     seL4_Word start, end;
 } hwcounter_t;
@@ -26,7 +21,7 @@ typedef struct {
 /* Macros */
 #define RDINSTRET(counter)        \
     do {                          \
-        asm volatile(                      \
+        asm volatile(             \
             "rdinstret %[ctr]"    \
             : [ctr] "=r"(counter) \
             :);                   \
@@ -34,7 +29,7 @@ typedef struct {
 
 #define RDCYCLE(counter)          \
     do {                          \
-        asm volatile(                      \
+        asm volatile(             \
             "rdcycle %[ctr]"      \
             : [ctr] "=r"(counter) \
             :);                   \
@@ -42,7 +37,7 @@ typedef struct {
 
 #define RDTIME(counter)           \
     do {                          \
-        asm volatile(                      \
+        asm volatile(             \
             "rdtime %[ctr]"       \
             : [ctr] "=r"(counter) \
             :);                   \
