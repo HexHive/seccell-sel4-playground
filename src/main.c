@@ -28,11 +28,20 @@ void *eval_client(void *args);
 void *eval_ipc(void *args);
 void *eval_tlb(void *args);
 void init_client(void);
+void print_results(char *eval, int repetition, size_t bufsize, seL4_Word time, seL4_Word instret, seL4_Word cycles);
 
 /* Benchmark specific globals, defines, macros */
 
 /* Number of repetitions for the benchmarks */
 #define REPETITIONS 100
+
+/*
+ * Human readable output
+ * 0: CSV output
+ * 1: Human readable output
+ * See print_results for more details
+ */
+#define HUMAN_READABLE 1
 
 const seL4_Word IPC_BUFSIZES[] = {
     0x00001, /*    1 B         */
@@ -157,12 +166,7 @@ void __attribute__((optimize(2))) run_raw_switch_eval(void) {
               [cyclestart] "=&r"(cycle.start), [cycleend] "=&r"(cycle.end)
             : [sd1] "r"(secdivs[0].id), [sd2] "r"(secdivs[1].id));
 
-        printf("Raw switch evaluation run %d\n", rep + 1);
-        printf("Metric               Value\n");
-        printf("--------------------------\n");
-        printf("Instructions    %10d\n", inst.end - inst.start);
-        printf("Cycles          %10d\n", cycle.end - cycle.start);
-        printf("Time            %10d\n\n", time.end - time.start);
+        print_results("Raw switch", rep + 1, 0, time.end - time.start, inst.end - inst.end, cycle.end - cycle.start);
     }
 }
 
@@ -192,12 +196,8 @@ void __attribute__((optimize(2))) run_context_switch_eval(void) {
         RDINSTRET(inst.end);
         RDTIME(time.end);
 
-        printf("Empty context switch evaluation run %d\n", rep + 1);
-        printf("Metric               Value\n");
-        printf("--------------------------\n");
-        printf("Instructions    %10d\n", inst.end - inst.start);
-        printf("Cycles          %10d\n", cycle.end - cycle.start);
-        printf("Time            %10d\n\n", time.end - time.start);
+        print_results("Empty context switch", rep + 1, 0, time.end - time.start, inst.end - inst.end,
+                      cycle.end - cycle.start);
     }
 }
 
@@ -243,13 +243,7 @@ void __attribute__((optimize(2))) run_ipc_eval(void *addr, size_t size) {
         RDINSTRET(inst.end);
         RDTIME(time.end);
 
-        printf("IPC Evaluation run %d with buffer size 0x%x bytes\n", rep + 1, size);
-        printf("Metric               Value\n");
-        printf("--------------------------\n");
-        printf("Instructions    %10d\n", inst.end - inst.start);
-        printf("Cycles          %10d\n", cycle.end - cycle.start);
-        printf("Time            %10d\n\n", time.end - time.start);
-
+        print_results("IPC", rep + 1, size, time.end - time.start, inst.end - inst.end, cycle.end - cycle.start);
     }
 }
 
@@ -305,12 +299,7 @@ void __attribute__((optimize(2))) run_tlb_eval(void *addr, size_t size) {
         RDINSTRET(inst.end);
         RDTIME(time.end);
 
-        printf("TLB Evaluation run %d with buffer size 0x%x bytes\n", rep + 1, size);
-        printf("Metric               Value\n");
-        printf("--------------------------\n");
-        printf("Instructions    %10d\n", inst.end - inst.start);
-        printf("Cycles          %10d\n", cycle.end - cycle.start);
-        printf("Time            %10d\n\n", time.end - time.start);
+        print_results("TLB", rep + 1, size, time.end - time.start, inst.end - inst.end, cycle.end - cycle.start);
     }
 }
 
@@ -340,4 +329,28 @@ void init_client(void) {
         ZF_LOGF_IF(secdivs[i].error != seL4_NoError, "Failed to create new SecDiv");
         DEBUGPRINT("Created new SecDiv with ID %d\n", secdivs[i].id);
     }
+}
+
+/*
+ * Output benchmark results in a unified way
+ * Note: Any aggregation of numbers (averaging, summing, whatever) is left to the interpreting script that processes the
+ * data further.
+ */
+void print_results(char *eval, int repetition, size_t bufsize, seL4_Word time, seL4_Word instret, seL4_Word cycles) {
+#if HUMAN_READABLE
+    printf("%s evaluation run %d", eval, repetition);
+    if (bufsize > 0) {
+        printf(" with buffer size 0x%x bytes\n", bufsize);
+    } else {
+        printf("\n");
+    }
+    printf("Metric               Value\n");
+    printf("--------------------------\n");
+    printf("Instructions    %10d\n", instret);
+    printf("Cycles          %10d\n", cycles);
+    printf("Time            %10d\n\n", time);
+#else
+    /* CSV with format "eval_type;repetition;buffer_size;time;instret;cycles" */
+    printf("%s;%d;%ld;%ld;%ld;%ld\n", eval, repetition, bufsize, time, instret, cycles);
+#endif /* HUMAN_READABLE */
 }
