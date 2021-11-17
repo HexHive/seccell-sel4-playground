@@ -28,8 +28,6 @@ void *eval_client(void *args);
 void *eval_ipc(void *args);
 void *eval_tlb(void *args);
 void init_client(void);
-seL4_CPtr init_buffer(seL4_BootInfo *info, shared_mem_t *buf);
-void teardown_buffer(seL4_CPtr buf_cap);
 
 /* Benchmark specific globals, defines, macros */
 
@@ -256,7 +254,7 @@ void __attribute__((optimize(2))) run_ipc_eval(void *addr, size_t size) {
 }
 
 /* Entry point for second thread with own context and arguments passed along */
-void *eval_ipc(void *args) {
+void __attribute__((optimize(2))) *eval_ipc(void *args) {
     shared_mem_t *run = (shared_mem_t *)args;
 
     memset(run->addr, 0x61, run->size);
@@ -317,7 +315,7 @@ void __attribute__((optimize(2))) run_tlb_eval(void *addr, size_t size) {
 }
 
 /* Entry point for second thread with own context and arguments passed along */
-void *eval_tlb(void *args) {
+void __attribute__((optimize(2))) *eval_tlb(void *args) {
     shared_mem_t *run = (shared_mem_t *)args;
 
     /* Touch only each 4096th byte of the buffer once to force address translation */
