@@ -166,7 +166,7 @@ void __attribute__((optimize(2))) run_raw_switch_eval(void) {
               [cyclestart] "=&r"(cycle.start), [cycleend] "=&r"(cycle.end)
             : [sd1] "r"(secdivs[0].id), [sd2] "r"(secdivs[1].id));
 
-        print_results("Raw switch", rep + 1, 0, time.end - time.start, inst.end - inst.end, cycle.end - cycle.start);
+        print_results("Raw switch", rep + 1, 0, time.end - time.start, inst.end - inst.start, cycle.end - cycle.start);
     }
 }
 
@@ -196,7 +196,7 @@ void __attribute__((optimize(2))) run_context_switch_eval(void) {
         RDINSTRET(inst.end);
         RDTIME(time.end);
 
-        print_results("Empty context switch", rep + 1, 0, time.end - time.start, inst.end - inst.end,
+        print_results("Empty context switch", rep + 1, 0, time.end - time.start, inst.end - inst.start,
                       cycle.end - cycle.start);
     }
 }
@@ -243,7 +243,7 @@ void __attribute__((optimize(2))) run_ipc_eval(void *addr, size_t size) {
         RDINSTRET(inst.end);
         RDTIME(time.end);
 
-        print_results("IPC", rep + 1, size, time.end - time.start, inst.end - inst.end, cycle.end - cycle.start);
+        print_results("IPC", rep + 1, size, time.end - time.start, inst.end - inst.start, cycle.end - cycle.start);
     }
 }
 
@@ -299,7 +299,7 @@ void __attribute__((optimize(2))) run_tlb_eval(void *addr, size_t size) {
         RDINSTRET(inst.end);
         RDTIME(time.end);
 
-        print_results("TLB", rep + 1, size, time.end - time.start, inst.end - inst.end, cycle.end - cycle.start);
+        print_results("TLB", rep + 1, size, time.end - time.start, inst.end - inst.start, cycle.end - cycle.start);
     }
 }
 
