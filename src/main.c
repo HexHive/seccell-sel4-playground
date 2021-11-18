@@ -281,6 +281,6 @@ void print_results(char *eval, int repetition, size_t bufsize, seL4_Word time, s
     printf("Time            %10d\n\n", time);
 #else
     /* CSV with format "eval_type;repetition;buffer_size;time;instret;cycles" */
-    printf("%s;%d;%ld;%ld;%ld;%ld\n", eval, repetition, bufsize, time, instret, cycles);
+    printf("%s,%d,%ld,%ld,%ld,%ld\n", eval, repetition, bufsize, time, instret, cycles);
 #endif /* HUMAN_READABLE */
 }
