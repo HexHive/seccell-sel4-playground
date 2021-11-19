@@ -25,4 +25,4 @@
 [submodule "projects/seL4_libs"]
 	path = projects/seL4_libs
 	url = git@github.com:HexHive/seccell-seL4_libs.git
-	branch = secure-florian
+	branch = eval/classic-ipc
