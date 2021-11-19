@@ -19,6 +19,7 @@ typedef struct {
 
 typedef enum {
     EVAL_EXIT,
+    EVAL_CONTEXT_SWITCH,
     EVAL_IPC,
     EVAL_TLB
 } task_t;

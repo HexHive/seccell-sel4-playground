@@ -28,6 +28,7 @@ vspace_t vspace;
 sel4utils_alloc_data_t data;
 sel4utils_process_t new_process;
 
+void run_context_switch_eval(seL4_CPtr endpoint);
 void run_ipc_eval(seL4_CPtr endpoint, shared_mem_t *buf, size_t size);
 void run_tlb_eval(seL4_CPtr endpoint, shared_mem_t *buf, size_t size);
 void init_allocator(seL4_BootInfo *info);
@@ -101,6 +102,8 @@ int main(int argc, char *argv[]) {
 
     init_buffer(&buf);
 
+    /* Raw context switching speed focused benchmark */
+    run_context_switch_eval(endpoint);
     /* IPC speed focused benchmark */
     for (int i = 0; i < IPC_RUNS; i++) {
         run_ipc_eval(endpoint, &buf, IPC_BUFSIZES[i]);
@@ -125,6 +128,36 @@ int main(int argc, char *argv[]) {
     UNREACHABLE();
 
     return 0;
+}
+
+/* Make an evaluation run just switching back and forth => focus on raw context switching speed */
+void __attribute__((optimize(2))) run_context_switch_eval(seL4_CPtr endpoint) {
+    register hwcounter_t inst, cycle, time;
+
+    for (int rep = 0; rep < REPETITIONS; rep++) {
+        /* Start measurements */
+        RDTIME(time.start);
+        RDINSTRET(inst.start);
+        RDCYCLE(cycle.start);
+
+        /* Setup data to pass along with the IPC */
+        task_t task = EVAL_CONTEXT_SWITCH;
+        seL4_SetMR(0, (seL4_Word)task);
+        seL4_SetMR(1, 0);
+        seL4_SetMR(2, 0);
+        seL4_MessageInfo_t msginfo = seL4_MessageInfo_new(0xdeadbeef, 0, 0, 3);
+        /* Call into the second process and wait for its response */
+        msginfo = seL4_Call(endpoint, msginfo);
+
+        /* End measurements */
+        RDCYCLE(cycle.end);
+        RDINSTRET(inst.end);
+        RDTIME(time.end);
+
+        DEBUGPRINT("Received answer with label 0x%x\n", seL4_MessageInfo_get_label(msginfo));
+        print_results("Empty context switch", rep + 1, 0, time.end - time.start, inst.end - inst.start,
+                      cycle.end - cycle.start);
+    }
 }
 
 /* Make an evaluation run with the specified shared buffer size => focus on IPC speed */

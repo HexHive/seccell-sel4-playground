@@ -50,6 +50,11 @@ int __attribute__((optimize(2))) main(int argc, char *argv[]) {
                 return 0;
             }
 
+            case EVAL_CONTEXT_SWITCH: {
+                /* Just return back to the caller */
+                break;
+            }
+
             case EVAL_IPC: {
                 eval_ipc((void *)addr, (size_t)size);
                 break;
