@@ -133,9 +133,9 @@ void __attribute__((optimize(2))) run_ipc_eval(seL4_CPtr endpoint, shared_mem_t 
 
     for (int rep = 0; rep < REPETITIONS; rep++) {
         /* Start measurements */
+        RDTIME(time.start);
         RDINSTRET(inst.start);
         RDCYCLE(cycle.start);
-        RDTIME(time.start);
 
         /* Touch the buffer with the specified size once */
         memset(buf->local, 0x41, size);
@@ -151,8 +151,8 @@ void __attribute__((optimize(2))) run_ipc_eval(seL4_CPtr endpoint, shared_mem_t 
         msginfo = seL4_Call(endpoint, msginfo);
 
         /* End measurements */
-        RDINSTRET(inst.end);
         RDCYCLE(cycle.end);
+        RDINSTRET(inst.end);
         RDTIME(time.end);
 
         DEBUGPRINT("Received answer with label 0x%x\n", seL4_MessageInfo_get_label(msginfo));
@@ -166,9 +166,9 @@ void __attribute__((optimize(2))) run_tlb_eval(seL4_CPtr endpoint, shared_mem_t 
 
     for (int rep = 0; rep < REPETITIONS; rep++) {
         /* Start measurements */
+        RDTIME(time.start);
         RDINSTRET(inst.start);
         RDCYCLE(cycle.start);
-        RDTIME(time.start);
 
         /* Touch each page of the buffer once to force address translation */
         char *charbuf = (char *)buf->local;
@@ -187,8 +187,8 @@ void __attribute__((optimize(2))) run_tlb_eval(seL4_CPtr endpoint, shared_mem_t 
         msginfo = seL4_Call(endpoint, msginfo);
 
         /* End measurements */
-        RDINSTRET(inst.end);
         RDCYCLE(cycle.end);
+        RDINSTRET(inst.end);
         RDTIME(time.end);
 
         DEBUGPRINT("Received answer with label 0x%x\n", seL4_MessageInfo_get_label(msginfo));
