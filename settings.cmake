@@ -47,8 +47,10 @@ set(LibSel4MuslcSysDebugHalt FALSE CACHE BOOL "" FORCE)
 # Only configure a single domain for the domain scheduler
 set(KernelNumDomains 1 CACHE STRING "" FORCE)
 
-# We want to build the debug kernel
-ApplyCommonReleaseVerificationSettings(FALSE FALSE)
+# We want to build the relase kernel but still allow printf without an explicit serial driver
+ApplyCommonReleaseVerificationSettings(TRUE FALSE)
+set(KernelPrinting ON CACHE BOOL "" FORCE)
+set(LibSel4PlatSupportUseDebugPutChar ON CACHE BOOL "" FORCE)
 
 # We will attempt to generate a simulation script, so try and generate a simulation
 # compatible configuration
