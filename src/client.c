@@ -29,11 +29,11 @@ int __attribute__((optimize(2))) main(int argc, char *argv[]) {
     }
     seL4_CPtr endpoint = atol(argv[0]);
 
+    /* Wait for initial message on endpoint */
+    seL4_Word sender = 0;
+    seL4_MessageInfo_t msginfo = seL4_Recv(endpoint, &sender);
     /* Communication loop */
     while (true) {
-        /* Wait for message on endpoint */
-        seL4_Word sender = 0;
-        seL4_MessageInfo_t msginfo = seL4_Recv(endpoint, &sender);
         DEBUGPRINT("Got woken up by an IPC message with label 0x%x\n", seL4_MessageInfo_get_label(msginfo));
 
         /* Retrieve arguments that got sent along the IPC call */
@@ -67,9 +67,9 @@ int __attribute__((optimize(2))) main(int argc, char *argv[]) {
             }
         }
 
-        /* Reply to the sender of the previous IPC message */
+        /* Reply to the sender of the previous IPC message and wait for a new message*/
         msginfo = seL4_MessageInfo_new(0x1337, 0, 0, 0);
-        seL4_Reply(msginfo);
+        seL4_ReplyRecv(endpoint, msginfo, &sender);
     }
     /* We should never arrive here: the process quits by getting told to do so in the IPC event loop */
     UNREACHABLE();
