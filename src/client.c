@@ -87,8 +87,14 @@ void __attribute__((optimize(2))) eval_ipc(void *buf, size_t bufsize) {
 
 /* Evaluate TLB reach: big buffers, only touch a single byte per page to force address translation */
 void __attribute__((optimize(2))) eval_tlb(void *buf, size_t bufsize) {
+    /*
+     * Touch only each 4096th byte of the buffer once to force address translation; offset by 64 bytes with each
+     * run to hit different cache sets in the experiments on the FPGA
+     */
     char *charbuf = (char *)buf;
-    for (size_t i = 0; i < bufsize; i += BIT(seL4_PageBits)) {
+    size_t incr = BIT(seL4_PageBits) + BIT(6);
+
+    for (size_t i = 0; i < bufsize; i += incr) {
         charbuf[i] = 0x61;
     }
 }

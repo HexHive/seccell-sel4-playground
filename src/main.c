@@ -203,9 +203,14 @@ void __attribute__((optimize(2))) run_tlb_eval(seL4_CPtr endpoint, shared_mem_t 
         RDINSTRET(inst.start);
         RDCYCLE(cycle.start);
 
-        /* Touch each page of the buffer once to force address translation */
+        /*
+         * Touch only each 4096th byte of the buffer once to force address translation; offset by 64 bytes with each
+         * run to hit different cache sets in the experiments on the FPGA
+         */
         char *charbuf = (char *)buf->local;
-        for (int i = 0; i < size; i += BIT(buf->page_bits)) {
+        size_t incr = BIT(buf->page_bits) + BIT(6);
+
+        for (size_t i = 0; i < size; i += incr) {
             charbuf[i] = 0x41;
         }
 
