@@ -248,7 +248,7 @@ void __attribute__((optimize(2))) run_ipc_eval(void *addr, size_t size) {
 }
 
 /* Entry point for second thread with own context and arguments passed along */
-void __attribute__((optimize(2))) *eval_ipc(void *args) {
+void __attribute__((optimize(2))) * eval_ipc(void *args) {
     shared_mem_t *run = (shared_mem_t *)args;
 
     memset(run->addr, 0x61, run->size);
@@ -280,9 +280,14 @@ void __attribute__((optimize(2))) run_tlb_eval(void *addr, size_t size) {
         RDINSTRET(inst.start);
         RDCYCLE(cycle.start);
 
-        /* Touch only each 4096th byte of the buffer once to force address translation */
+        /*
+         * Touch only each 4096th byte of the buffer once to force address translation; offset by 64 bytes with each
+         * run to hit different cache sets in the experiments on the FPGA
+         */
         char *charbuf = (char *)addr;
-        for (size_t i = 0; i < size; i += BIT(seL4_PageBits)) {
+        size_t incr = BIT(seL4_PageBits) + BIT(6);
+
+        for (size_t i = 0; i < size; i += incr) {
             charbuf[i] = 0x41;
         }
 
@@ -304,12 +309,19 @@ void __attribute__((optimize(2))) run_tlb_eval(void *addr, size_t size) {
 }
 
 /* Entry point for second thread with own context and arguments passed along */
-void __attribute__((optimize(2))) *eval_tlb(void *args) {
+void __attribute__((optimize(2))) * eval_tlb(void *args) {
     shared_mem_t *run = (shared_mem_t *)args;
 
-    /* Touch only each 4096th byte of the buffer once to force address translation */
+    /*
+     * Touch only each 4096th byte of the buffer once to force address translation; offset by 64 bytes with each run to
+     * hit different cache sets in the experiments on the FPGA; also make the size a local variable to prevent memory
+     * loads (compiler will put it in a register instead of having a memory load at every iteration)
+     */
     char *charbuf = (char *)run->addr;
-    for (size_t i = 0; i < run->size; i += BIT(seL4_PageBits)) {
+    size_t size = run->size;
+    size_t incr = BIT(seL4_PageBits) + BIT(6);
+
+    for (size_t i = 0; i < size; i += incr) {
         charbuf[i] = 0x41;
     }
 
