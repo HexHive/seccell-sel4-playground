@@ -29,4 +29,4 @@
 [submodule "projects/seL4_seccells"]
 	path = projects/seL4_seccells
 	url = git@github.com:HexHive/seccell-seL4_libseccells.git
-	branch = main
+	branch = eval/seccells

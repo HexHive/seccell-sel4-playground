@@ -188,8 +188,11 @@ void __attribute__((optimize(2))) run_context_switch_eval(void) {
         RDINSTRET(inst.start);
         RDCYCLE(cycle.start);
 
-        /* Switch context (with empty arguments) */
-        scthreads_call(secdivs[1].id, &eval_context_switch, NULL);
+        /*
+         * Switch context (with empty arguments) => use low-level function for better performance
+         * Equivalent to scthreads_call(secdivs[1].id, &eval_context_switch, NULL);
+         */
+        scthreads_switch_internal(secdivs[1].id, &eval_context_switch, NULL, SCCALL);
 
         /* End performance counters */
         RDCYCLE(cycle.end);
@@ -203,7 +206,11 @@ void __attribute__((optimize(2))) run_context_switch_eval(void) {
 
 /* Entry point for second SecDiv with its own context */
 void __attribute__((optimize(2))) * eval_context_switch(void *args) {
-    scthreads_return(NULL);
+    /*
+     * Return to caller => use low-level function for better performance
+     * Equivalent to scthreads_return(NULL);
+     */
+    scthreads_switch_internal(0, NULL, NULL, SCRETURN);
 }
 
 /* Make an evaluation run with the specified shared buffer size => target IPC/thread switching speed w/ data passing */
