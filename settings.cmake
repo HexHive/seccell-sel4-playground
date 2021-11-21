@@ -34,7 +34,6 @@ set(KernelRiscvExtD ON CACHE BOOL "" FORCE)
 set(KernelRiscvExtF ON CACHE BOOL "" FORCE)
 set(KernelSecCell ON CACHE BOOL "" FORCE)
 set(KernelResetChunkBits "12" CACHE STRING "" FORCE)
-set(KernelOptimisation "-O0" CACHE STRING "" FORCE)
 ApplyData61ElfLoaderSettings(${KernelPlatform} ${KernelSel4Arch})
 
 include(${project_dir}/kernel/configs/seL4Config.cmake)
