@@ -135,7 +135,7 @@ int main(int argc, char *argv[]) {
 }
 
 /* Evaluate performance of just switching back and forth between SecDivs */
-void __attribute__((optimize(2))) run_raw_switch_eval(void) {
+void run_raw_switch_eval(void) {
     register hwcounter_t inst, cycle, time;
 
     /* Have to grant read-execute permissions for the other SecDiv to execute the code */
@@ -171,7 +171,7 @@ void __attribute__((optimize(2))) run_raw_switch_eval(void) {
 }
 
 /* Evaluate performance of switching back and forth between SecDivs with storing and restoring contexts in between */
-void __attribute__((optimize(2))) run_context_switch_eval(void) {
+void run_context_switch_eval(void) {
     register hwcounter_t inst, cycle, time;
 
     /* Have to grant read-execute permissions for the other SecDiv to execute the code */
@@ -202,13 +202,13 @@ void __attribute__((optimize(2))) run_context_switch_eval(void) {
 }
 
 /* Entry point for second SecDiv with its own context */
-void __attribute__((optimize(2))) * eval_context_switch(void *args) {
+void NAKED *eval_context_switch(void *args) {
     /* Return to caller */
     scthreads_return(NULL);
 }
 
 /* Make an evaluation run with the specified shared buffer size => target IPC/thread switching speed w/ data passing */
-void __attribute__((optimize(2))) run_ipc_eval(void *addr, size_t size) {
+void run_ipc_eval(void *addr, size_t size) {
     register hwcounter_t inst, cycle, time;
 
     /* Have to grant read-execute permissions for the other SecDiv to execute the code */
@@ -249,7 +249,7 @@ void __attribute__((optimize(2))) run_ipc_eval(void *addr, size_t size) {
 }
 
 /* Entry point for second thread with own context and arguments passed along */
-void __attribute__((optimize(2))) * eval_ipc(void *args) {
+void *eval_ipc(void *args) {
     shared_mem_t *run = (shared_mem_t *)args;
 
     memset(run->addr, 0x61, run->size);
@@ -261,7 +261,7 @@ void __attribute__((optimize(2))) * eval_ipc(void *args) {
 }
 
 /* Make an evaluation run with the specified shared buffer size => target address translation */
-void __attribute__((optimize(2))) run_tlb_eval(void *addr, size_t size) {
+void run_tlb_eval(void *addr, size_t size) {
     register hwcounter_t inst, cycle, time;
 
     /* Have to grant read-execute permissions for the other SecDiv to execute the code */
@@ -310,7 +310,7 @@ void __attribute__((optimize(2))) run_tlb_eval(void *addr, size_t size) {
 }
 
 /* Entry point for second thread with own context and arguments passed along */
-void __attribute__((optimize(2))) * eval_tlb(void *args) {
+void *eval_tlb(void *args) {
     shared_mem_t *run = (shared_mem_t *)args;
 
     /*

@@ -19,6 +19,8 @@ typedef struct {
 } shared_mem_t;
 
 /* Macros */
+#define NAKED __attribute__((__naked__))
+
 #define RDINSTRET(counter)        \
     do {                          \
         asm volatile(             \
