@@ -189,7 +189,7 @@ void run_context_switch_eval(void) {
         RDCYCLE(cycle.start);
 
         /* Switch context (with empty arguments) */
-        scthreads_call(secdivs[1].id, &eval_context_switch, NULL);
+        scthreads_call(NULL, &eval_context_switch, secdivs[1].id);
 
         /* End performance counters */
         RDCYCLE(cycle.end);
@@ -237,7 +237,7 @@ void run_ipc_eval(void *addr, size_t size) {
         tfer(run_args->addr, secdivs[1].id, RT_R | RT_W);
         tfer(run_args, secdivs[1].id, RT_R | RT_W);
 
-        scthreads_call(secdivs[1].id, &eval_ipc, (void *)run_args);
+        scthreads_call((void *)run_args, &eval_ipc, secdivs[1].id);
 
         /* End performance counters */
         RDCYCLE(cycle.end);
@@ -298,7 +298,7 @@ void run_tlb_eval(void *addr, size_t size) {
         tfer(run_args->addr, secdivs[1].id, RT_R | RT_W);
         tfer(run_args, secdivs[1].id, RT_R | RT_W);
 
-        scthreads_call(secdivs[1].id, &eval_tlb, (void *)run_args);
+        scthreads_call((void *)run_args, &eval_tlb, secdivs[1].id);
 
         /* End performance counters */
         RDCYCLE(cycle.end);
