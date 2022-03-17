@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdbool.h>
 #include <sel4/sel4.h>
 #include <sel4platsupport/bootinfo.h>
 #include <sel4platsupport/platsupport.h>
@@ -16,6 +17,9 @@
         func(args);                                                                     \
         printf("###################### Finished " #func " ######################\n\n"); \
     } while (0)
+
+#define boolstr(x) \
+    ((x) ? "true" : "false")
 
 #define BASE_VADDR    0xA000000
 #define CONTEXT_VADDR 0xF000000
@@ -149,11 +153,12 @@ void permission_test(seL4_BootInfo *info) {
     printf("Read %p: %lu\n", x, *x);
     assert(5 == *x);
 
-    /* Count SecDivs with write access => should be exactly one (rootserver) */
-    unsigned int count;
-    count(count, x, RT_W);
-    printf("Count (write on %p): %d\n", x, count);
-    assert(1 == count);
+    /* Check exclusive write access */
+    unsigned int tmp;
+    excl(tmp, x, RT_W);
+    bool exclusive = (0 == tmp);
+    printf("Exclusive access (write on %p): %s\n", x, boolstr(exclusive));
+    assert(exclusive);
 
     /* Invalidate the first cell */
     inval(x);
@@ -183,10 +188,11 @@ void permission_test(seL4_BootInfo *info) {
     tfer(BASE_VADDR + 0x1000, secdiv.id, RT_R);
     printf("After granting and transferring permissions to SecDiv %d\n", secdiv.id);
 
-    /* Count SecDivs with execute access => should be exactly two */
-    count(count, &main, RT_X);
-    printf("Count (execute on %p): %d\n", &main, count);
-    assert(2 == count);
+    /* Check exclusive execute access => should not be exclusive */
+    excl(tmp, &main, RT_X);
+    exclusive = (0 == tmp);
+    printf("Exclusive access (execute on %p): %s\n", &main, boolstr(exclusive));
+    assert(!exclusive);
 
     /* Drop write permissions on the first cell => reading should still succeed */
     prot(BASE_VADDR, RT_R | RT_W);
@@ -379,6 +385,6 @@ void compile_test(void) {
         "prot x0, x0        \n\t"
         "grant x0, x0, 0    \n\t"
         "tfer x0, x0, 0     \n\t"
-        "count x0, x0, x0   \n\t"
+        "excl x0, x0, x0   \n\t"
     );
 }
