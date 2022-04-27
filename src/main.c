@@ -1,4 +1,5 @@
 #include <sel4/sel4.h>
+#include <sel4platsupport/platsupport.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -22,6 +23,12 @@ static inline char whichchar(unsigned i) {
 }
 
 int main(int argc, char *argv[]) {
+    /* Setup serial output via seL4_Debug_PutChar */
+    if (platsupport_serial_setup_bootinfo_failsafe()) {
+        /* Error occured during setup => terminate */
+        return 1;
+    }
+
     cache_init();
     char key[16], value[64];
 
