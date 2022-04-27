@@ -16,6 +16,9 @@ add_executable(
     seL4-playground
     src/main.c
     src/alloc.c
+    src/cache.c
+    src/jenkins_hash.c
+    src/slabs.c
 )
 
 # Add the global include directory
@@ -35,6 +38,8 @@ target_link_libraries(seL4-playground
         sel4platsupport
         sel4utils
         sel4debug
+        sel4_Config
+        sel4_autoconf
 )
 
 # Tell the build system that this application is the root task
