@@ -5,9 +5,12 @@
 # VS Code files
 .vscode/*
 
-# Build output (for folders with prefix "build")
+# Build output
 build*
 .sel4_cache/*
+
+# Other unnecessary files
+*.diff
 
 # Prerequisites
 *.d
