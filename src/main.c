@@ -7,6 +7,7 @@
 #define NITEMS 16 * 1024
 #define NCHARS 5
 #define ALPHABETSIZE (26 + 26 + 10 + 2)
+
 static inline char whichchar(unsigned i) {
     if (i < 26)
         return 'A' + i;

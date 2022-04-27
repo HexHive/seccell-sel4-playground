@@ -19,6 +19,7 @@ add_executable(
     src/cache.c
     src/jenkins_hash.c
     src/slabs.c
+    src/sc_mmap.c
 )
 
 # Add the global include directory
