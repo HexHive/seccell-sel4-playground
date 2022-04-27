@@ -22,6 +22,13 @@ static const uint32_t slab_page_size = 8 * 1024 * 1024;
 #define mmap sc_mmap
 
 static void *sc_mmap(void *start, size_t len, int prot, int flags, int fd, off_t off) {
+  /*
+   * We just ignore any flags here and map a range with the requested size read-write accessible.
+   * This is hacky, but good enough for now.
+   * Ideally, we would have a dynamic allocator instead of the static allocation that mmap is using
+   * (morecore section in the binary). However, this requires more modifications to the seL4 libraries
+   * so that they can actually map new memory in.
+   */
   seL4_BootInfo *info = platsupport_get_bootinfo();
   static void *addr = (void *)MMAP_BASE;
   void *ret = addr;
