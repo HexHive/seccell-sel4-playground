@@ -3,9 +3,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <autoconf.h>
 #include "slabs.h"
 #include "cache.h"
 #include "hash.h"
+#ifdef CONFIG_RISCV_SECCELL
+#include <sys/mman.h>
+#include "sc_mmap.h"
+#endif /* CONFIG_RISCV_SECCELL */
 
 #define hashsize(n) ((uint32_t)1<<(n))
 #define hashmask(n) (hashsize(n)-1)
@@ -17,7 +22,14 @@ static unsigned hashpower = 10;
 hash_func hash = jenkins_hash;
 
 int cache_init() {
+#ifdef CONFIG_RISCV_SECCELL
+  /* Hopefully, there's no overflow in the size calculation */
+  size_t sz = hashsize(hashpower) * sizeof(*hashtable);
+  hashtable = (item **)mmap(NULL, sz, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, 0, 0);
+  memset((void* )hashtable, 0, sz);
+#else
   hashtable = (item **)calloc(hashsize(hashpower), sizeof(*hashtable));
+#endif /* CONFIG_RISCV_SECCELL */
   slab_init();
 }
 
