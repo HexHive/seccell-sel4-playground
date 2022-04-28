@@ -8,6 +8,7 @@
 #include "cache.h"
 #include "cache_wrapper.h"
 #include "config.h"
+#include "bench.h"
 
 #define ALPHABETSIZE (26 + 26 + 10 + 2)
 
@@ -65,6 +66,8 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    perf_counters_t counters[NPASSES] = { 0 };
+
     cachekey_t key;
     char enckeybuf[256];
     char encvalbuf[256];
@@ -86,11 +89,27 @@ int main(int argc, char *argv[]) {
             memset(&key, 0, sizeof(key));
             make_key(i, &key);
             int enclen = encrypt_key(ctx, &key, enckeybuf);
+            size_t before_i, after_i, before_c, after_c;
+            RDCTR(before_i, instret);
+            RDCTR(before_c, cycle);
             cache_get_wrapper(enckeybuf, enclen, encvalbuf, 256);
+            RDCTR(after_c, cycle);
+            RDCTR(after_i, instret);
+            counters[j].instret += after_i - before_i;
+            counters[j].cycle += after_c - before_c;
         }
     }
 
     wrapper_free();
+
+    const char *cumulative_cycles = "Cumulative cycles:";
+    const char *cumulative_instret = "Cumulative retired insns:";
+    const size_t cumulative_str_len = MAX(strlen(cumulative_cycles), strlen(cumulative_instret));
+    for (size_t i = 0; i < NPASSES; i++) {
+        printf("Pass %3zd:\n", i);
+        printf("    %-*s %10zd\n", cumulative_str_len, cumulative_cycles, counters[i].cycle);
+        printf("    %-*s %10zd\n", cumulative_str_len, cumulative_instret, counters[i].instret);
+    }
 
     seL4_TCB_Suspend(seL4_CapInitThreadTCB);
 
