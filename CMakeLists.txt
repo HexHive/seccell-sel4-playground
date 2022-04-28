@@ -11,6 +11,25 @@ include(settings.cmake)
 # Include the actual build system provided by seL4_tools
 include(tools/seL4_tools/cmake-tool/all.cmake)
 
+# Include SecureCells-specific source files and libraries
+if(KernelSecCell)
+    set(sc_sources
+        ${sc_sources}
+        src/sc_mmap.c
+    )
+    set(sc_libs
+        ${sc_libs}
+        seL4seccells
+    )
+else()
+    set(sc_sources
+        ${sc_sources}
+    )
+    set(sc_libs
+        ${sc_libs}
+    )
+endif()
+
 # Name the executable and list source files required to build it
 add_executable(
     seL4-playground
@@ -20,7 +39,7 @@ add_executable(
     src/cache_wrapper.c
     src/jenkins_hash.c
     src/slabs.c
-    src/sc_mmap.c
+    ${sc_sources}
 )
 
 # Add the global include directory
@@ -35,13 +54,13 @@ target_link_libraries(seL4-playground
         sel4
         muslc
         utils
-        seL4seccells
         sel4muslcsys
         sel4platsupport
         sel4utils
         sel4debug
         sel4_Config
         sel4_autoconf
+        ${sc_libs}
 )
 
 # Tell the build system that this application is the root task

@@ -12,6 +12,7 @@
 
 #include <sel4/sel4.h>
 #include <utils/util.h>
+#include <autoconf.h>
 
 seL4_CPtr alloc_slot(seL4_BootInfo *info)
 {
@@ -32,6 +33,7 @@ seL4_CPtr alloc_object(seL4_BootInfo *info, seL4_Word type, seL4_Word size)
         seL4_UntypedDesc *desc = &info->untypedList[untyped - info->untyped.start];
         if (!desc->isDevice) {
             seL4_Error error;
+#ifdef CONFIG_RISCV_SECCELL
             if (type == seL4_RISCV_RangeObject) {
                 /* For ranges: interpret size as actual size in bytes, rounded up to multiples of MinRangeSize by the
                    kernel */
@@ -40,6 +42,9 @@ seL4_CPtr alloc_object(seL4_BootInfo *info, seL4_Word type, seL4_Word size)
                 /* For other objects: interpret size as the number of bits to use for the actual size */
                 error = seL4_Untyped_Retype(untyped, type, BIT(size), seL4_CapInitThreadCNode, 0, 0, cslot, 1);
             }
+#else
+            error = seL4_Untyped_Retype(untyped, type, BIT(size), seL4_CapInitThreadCNode, 0, 0, cslot, 1);
+#endif /* CONFIG_RISCV_SECCELL */
             if (error == seL4_NoError) {
                 return cslot;
             } else if (error != seL4_NotEnoughMemory) {
