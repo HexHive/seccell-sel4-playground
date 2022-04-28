@@ -8,7 +8,11 @@
 #include "cache.h"
 #include "hash.h"
 #ifdef CONFIG_RISCV_SECCELL
+#include <sel4/sel4.h>
 #include <sys/mman.h>
+#include <sel4utils/util.h>
+#include <sel4platsupport/platsupport.h>
+#include <seccells/seccells.h>
 #include "sc_mmap.h"
 #endif /* CONFIG_RISCV_SECCELL */
 
@@ -21,8 +25,44 @@ static item **hashtable = NULL;
 static unsigned hashpower = 10;
 hash_func hash = jenkins_hash;
 
-int cache_init() {
 #ifdef CONFIG_RISCV_SECCELL
+/* SecDiv IDs get initialized in the code */
+static unsigned int cache_secdiv = 0;
+static unsigned int request_secdiv = 0;
+#endif /* CONFIG_RISCV_SECCELL */
+
+int cache_init() {
+  /* First block: hashtable and (if necessary) SecDiv initialization */
+#ifdef CONFIG_RISCV_SECCELL
+  /* Create the cache SecDiv */
+  seL4_RISCV_RangeTable_AddSecDiv_t ret = seL4_RISCV_RangeTable_AddSecDiv(seL4_CapInitThreadVSpace);
+  ZF_LOGF_IF(ret.error != seL4_NoError, "Failed to create new SecDiv");
+  cache_secdiv = ret.id;
+  /* Store the requesting SecDiv's ID */
+  csrr_usid(request_secdiv);
+
+  /*
+   * Grant permissions to the new SecDiv so that we can actually switch to it and so that it can map memory
+   * To achieve this, it needs access to:
+   *   - Code and stack => by default in the same memory range (because that's how seL4 works...)
+   *   - The bootinfo range for retyping untyped memory into proper ranges
+   *   - The IPC buffer range for issuing syscalls (i.e., memory retyping)
+   */
+  seL4_Error err = seL4_RISCV_RangeTable_GrantSecDivPermissions(seL4_CapInitThreadVSpace, (seL4_Word)cache_secdiv,
+                                                                (seL4_Word)&cache_init, RT_R | RT_W | RT_X);
+  ZF_LOGF_IF(err != seL4_NoError, "Failed to grant permissions to new SecDiv");
+  seL4_BootInfo *info = platsupport_get_bootinfo();
+  err = seL4_RISCV_RangeTable_GrantSecDivPermissions(seL4_CapInitThreadVSpace, (seL4_Word)cache_secdiv,
+                                                     (seL4_Word)info, RT_R | RT_W);
+  ZF_LOGF_IF(err != seL4_NoError, "Failed to grant permissions to new SecDiv");
+  err = seL4_RISCV_RangeTable_GrantSecDivPermissions(seL4_CapInitThreadVSpace, (seL4_Word)cache_secdiv,
+                                                     (seL4_Word)info->ipcBuffer, RT_R | RT_W);
+  ZF_LOGF_IF(err != seL4_NoError, "Failed to grant permissions to new SecDiv");
+
+  /* Switch to new SecDiv */
+  jals(cache_secdiv, cache_init_entry);
+cache_init_entry:
+  entry();
   /* Hopefully, there's no overflow in the size calculation */
   size_t sz = hashsize(hashpower) * sizeof(*hashtable);
   hashtable = (item **)mmap(NULL, sz, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, 0, 0);
@@ -30,7 +70,15 @@ int cache_init() {
 #else
   hashtable = (item **)calloc(hashsize(hashpower), sizeof(*hashtable));
 #endif /* CONFIG_RISCV_SECCELL */
+  /* Second block: slab initialization */
   slab_init();
+
+  /* Third block: if necessary, return back to calling SecDiv */
+#ifdef CONFIG_RISCV_SECCELL
+  jals(request_secdiv, cache_init_exit);
+cache_init_exit:
+  entry();
+#endif /* CONFIG_RISCV_SECCELL */
 }
 
 /* Find and return the item with key in the hashtable */
