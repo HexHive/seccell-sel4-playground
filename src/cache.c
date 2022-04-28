@@ -60,9 +60,7 @@ int cache_init() {
   ZF_LOGF_IF(err != seL4_NoError, "Failed to grant permissions to new SecDiv");
 
   /* Switch to new SecDiv */
-  jals(cache_secdiv, cache_init_entry);
-cache_init_entry:
-  entry();
+  SD_ENTRY(cache_secdiv, cache_init);
   /* Hopefully, there's no overflow in the size calculation */
   size_t sz = hashsize(hashpower) * sizeof(*hashtable);
   hashtable = (item **)mmap(NULL, sz, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, 0, 0);
@@ -75,9 +73,7 @@ cache_init_entry:
 
   /* Third block: if necessary, return back to calling SecDiv */
 #ifdef CONFIG_RISCV_SECCELL
-  jals(request_secdiv, cache_init_exit);
-cache_init_exit:
-  entry();
+  SD_EXIT(request_secdiv, cache_init);
 #endif /* CONFIG_RISCV_SECCELL */
 }
 

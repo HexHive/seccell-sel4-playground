@@ -2,7 +2,24 @@
 #define CACHE_H
 
 #include <stdint.h>
+#include <autoconf.h>
 #include "config.h"
+
+#ifdef CONFIG_RISCV_SECCELL
+#include <seccells/seccells.h>
+
+#define SD_ENTRY(secdiv, func) do {   \
+  jals(secdiv, func##_entry);         \
+func##_entry:                         \
+  entry();                            \
+} while (0)
+
+#define SD_EXIT(secdiv, func) do {    \
+  jals(secdiv, func##_exit);          \
+func##_exit:                          \
+  entry();                            \
+} while (0)
+#endif /* CONFIG_RISCV_SECCELL */
 
 typedef struct _stritem {
   /* Used for linking items into list in bucket */
