@@ -1,12 +1,14 @@
+#include <assert.h>
 #include <sel4/sel4.h>
 #include <sel4platsupport/platsupport.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "cache.h"
+#include "cache_wrapper.h"
+#include "config.h"
 
-#define NITEMS 16 * 1024
-#define NCHARS 5
 #define ALPHABETSIZE (26 + 26 + 10 + 2)
 
 static inline char whichchar(unsigned i) {
@@ -22,6 +24,40 @@ static inline char whichchar(unsigned i) {
         return '\0';
 }
 
+typedef struct __attribute__((packed)) {
+    int len;
+    char keybuf[60];
+} cachekey_t;
+
+static void make_key(int intkey, cachekey_t *key) {
+    key->len = NCHARS;
+
+    int j;
+    for (j = 0; j < NCHARS; j++) {
+        key->keybuf[j] = whichchar(intkey % ALPHABETSIZE);
+        intkey /= ALPHABETSIZE;
+    }
+    assert(intkey == 0);
+    key->keybuf[j] = '\0';
+}
+
+static int encrypt_key(mbedtls_aes_context *ctx, cachekey_t *key, char *buf) {
+    int enclen = 0, remaining;
+    int ret;
+
+    remaining = key->len + sizeof(int);
+    while (remaining > 0) {
+        ret = mbedtls_aes_crypt_ecb(ctx, MBEDTLS_AES_ENCRYPT,
+                                    ((char *)key) + enclen, buf + enclen);
+        if (ret)
+            return -1;
+
+        remaining -= 16;
+        enclen += 16;
+    }
+    return enclen;
+}
+
 int main(int argc, char *argv[]) {
     /* Setup serial output via seL4_Debug_PutChar */
     if (platsupport_serial_setup_bootinfo_failsafe()) {
@@ -29,22 +65,32 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    cache_init();
-    char key[16], value[64];
+    cachekey_t key;
+    char enckeybuf[256];
+    char encvalbuf[256];
+    mbedtls_aes_context *ctx;
 
+    ctx = wrapper_init();
+
+    /* Set value into cache */
     for (int i = 0; i < NITEMS; i++) {
-        int tmp = i;
-        int j;
-        for (j = 0; j < NCHARS; j++) {
-            key[j] = whichchar(tmp % ALPHABETSIZE);
-            tmp /= ALPHABETSIZE;
-        }
-        key[j] = '\0';
+        make_key(i, &key);
 
-        cache_set(key, j, "hell1hell2hell3hell4hell5", 25);
+        int r = cache_set(key.keybuf, NCHARS, "hell1hell2hell3hell4hell5", 25);
+        assert(r >= 0);
     }
 
-    dump_cache();
+    /* Retrieve same values into cache */
+    for (int j = 0; j < NPASSES; j++) {
+        for (int i = 0; i < NITEMS; i++) {
+            memset(&key, 0, sizeof(key));
+            make_key(i, &key);
+            int enclen = encrypt_key(ctx, &key, enckeybuf);
+            cache_get_wrapper(enckeybuf, enclen, encvalbuf, 256);
+        }
+    }
+
+    wrapper_free();
 
     seL4_TCB_Suspend(seL4_CapInitThreadTCB);
 

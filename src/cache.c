@@ -7,6 +7,9 @@
 #include "slabs.h"
 #include "cache.h"
 #include "hash.h"
+/*** BIG TODO ***/
+/* Unify into global LRU list as in memcached, and have separate hashlist */
+
 #ifdef CONFIG_RISCV_SECCELL
 #include <sel4/sel4.h>
 #include <sys/mman.h>
@@ -22,7 +25,7 @@
 #define MIN(x, y)   (((x) < (y))? (x): (y))
 
 static item **hashtable = NULL;
-static unsigned hashpower = 10;
+static unsigned hashpower = DEFAULT_HASHPOWER;
 hash_func hash = jenkins_hash;
 
 #ifdef CONFIG_RISCV_SECCELL
@@ -148,7 +151,7 @@ int cache_get(const char *key, int nkey, char *value, int maxnval) {
 #ifdef CONFIG_RISCV_SECCELL
   SD_EXIT(request_secdiv, cache_get);
 #endif /* CONFIG_RISCV_SECCELL */
-  return 0;
+  return nval;
 }
 
 int cache_set(const char *key, int nkey, const char *value, int nval) {
@@ -197,7 +200,8 @@ void dump_cache() {
     if(hashtable[i])
       printf("\n");
   }
-  printf("Used %ld bytes\n", storage);
+  /* Find memory usage from slab allocator */
+  printf("Used %lu bytes\n", slabs_memory_used());
 #ifdef CONFIG_RISCV_SECCELL
   SD_EXIT(request_secdiv, dump_cache);
 #endif /* CONFIG_RISCV_SECCELL */

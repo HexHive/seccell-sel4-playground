@@ -23,6 +23,11 @@ func##_exit:                          \
 
 typedef struct _stritem {
   /* Used for linking items into list in bucket */
+
+/* Returns:
+ * -1 on error
+ * length of value on success
+ */
   struct _stritem *next;
   struct _stritem *prev;
   /* Other information */
