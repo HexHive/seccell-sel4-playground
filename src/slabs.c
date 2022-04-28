@@ -6,9 +6,7 @@
 #include "config.h"
 #include "cache.h"
 #include "slabs.h"
-#ifdef CONFIG_RISCV_SECCELL
-#include "sc_mmap.h"
-#endif /* CONFIG_RISCV_SECCELL */
+#include "mmap_override.h"
 
 static slabclass_t slabclass[MAX_NUMBER_OF_SLAB_CLASSES];
 static const uint32_t slab_page_size = 32 * 1024 * 1024;

@@ -13,18 +13,11 @@ include(tools/seL4_tools/cmake-tool/all.cmake)
 
 # Include SecureCells-specific source files and libraries
 if(KernelSecCell)
-    set(sc_sources
-        ${sc_sources}
-        src/sc_mmap.c
-    )
     set(sc_libs
         ${sc_libs}
         seL4seccells
     )
 else()
-    set(sc_sources
-        ${sc_sources}
-    )
     set(sc_libs
         ${sc_libs}
     )
@@ -39,7 +32,7 @@ add_executable(
     src/cache_wrapper.c
     src/jenkins_hash.c
     src/slabs.c
-    ${sc_sources}
+    src/mmap_override.c
 )
 
 # Add the global include directory

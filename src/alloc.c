@@ -39,11 +39,11 @@ seL4_CPtr alloc_object(seL4_BootInfo *info, seL4_Word type, seL4_Word size)
                    kernel */
                 error = seL4_Untyped_Retype(untyped, type, size, seL4_CapInitThreadCNode, 0, 0, cslot, 1);
             } else {
-                /* For other objects: interpret size as the number of bits to use for the actual size */
-                error = seL4_Untyped_Retype(untyped, type, BIT(size), seL4_CapInitThreadCNode, 0, 0, cslot, 1);
+                /* For other objects: the type already tells the kernel the necessary size */
+                error = seL4_Untyped_Retype(untyped, type, 0, seL4_CapInitThreadCNode, 0, 0, cslot, 1);
             }
 #else
-            error = seL4_Untyped_Retype(untyped, type, BIT(size), seL4_CapInitThreadCNode, 0, 0, cslot, 1);
+            error = seL4_Untyped_Retype(untyped, type, 0, seL4_CapInitThreadCNode, 0, 0, cslot, 1);
 #endif /* CONFIG_RISCV_SECCELL */
             if (error == seL4_NoError) {
                 return cslot;

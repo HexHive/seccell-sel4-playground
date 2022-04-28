@@ -16,7 +16,7 @@
 #include <sel4utils/util.h>
 #include <sel4platsupport/platsupport.h>
 #include <seccells/seccells.h>
-#include "sc_mmap.h"
+#include "mmap_override.h"
 #endif /* CONFIG_RISCV_SECCELL */
 
 #define hashsize(n) ((uint32_t)1<<(n))
