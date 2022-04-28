@@ -131,6 +131,9 @@ static item *item_unlink(const char *key, int nkey, uint32_t hv) {
 
 /*************** External API *********************************/
 int cache_get(const char *key, int nkey, char *value, int maxnval) {
+#ifdef CONFIG_RISCV_SECCELL
+  SD_ENTRY(cache_secdiv, cache_get);
+#endif /* CONFIG_RISCV_SECCELL */
   int nval;
   uint32_t hv = hash(key, nkey);
 
@@ -142,11 +145,16 @@ int cache_get(const char *key, int nkey, char *value, int maxnval) {
   nval = MIN(it->nbytes, maxnval - 1);
   memcpy(value, ITEM_val(it), nval);
   value[nval] = '\0';
-
+#ifdef CONFIG_RISCV_SECCELL
+  SD_EXIT(request_secdiv, cache_get);
+#endif /* CONFIG_RISCV_SECCELL */
   return 0;
 }
 
 int cache_set(const char *key, int nkey, const char *value, int nval) {
+#ifdef CONFIG_RISCV_SECCELL
+  SD_ENTRY(cache_secdiv, cache_set);
+#endif /* CONFIG_RISCV_SECCELL */
   item *it;
   uint32_t hv = hash(key, nkey);
 
@@ -165,10 +173,16 @@ int cache_set(const char *key, int nkey, const char *value, int nval) {
     it->next->prev = it;
   hashtable[hv & hashmask(hashpower)] = it;
 
+#ifdef CONFIG_RISCV_SECCELL
+  SD_EXIT(request_secdiv, cache_set);
+#endif /* CONFIG_RISCV_SECCELL */
   return 0;
 }
 
 void dump_cache() {
+#ifdef CONFIG_RISCV_SECCELL
+  SD_ENTRY(cache_secdiv, dump_cache);
+#endif /* CONFIG_RISCV_SECCELL */
   item *it;
   uint64_t storage = 0;
 
@@ -184,4 +198,7 @@ void dump_cache() {
       printf("\n");
   }
   printf("Used %ld bytes\n", storage);
+#ifdef CONFIG_RISCV_SECCELL
+  SD_EXIT(request_secdiv, dump_cache);
+#endif /* CONFIG_RISCV_SECCELL */
 }
