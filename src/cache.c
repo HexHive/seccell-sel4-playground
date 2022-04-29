@@ -13,8 +13,9 @@
 #ifdef CONFIG_RISCV_SECCELL
 #include <sel4/sel4.h>
 #include <sys/mman.h>
-#include <sel4utils/util.h>
-#include <sel4platsupport/platsupport.h>
+#include <utils/builtin.h>
+#include <utils/zf_log_if.h>
+#include <sel4platsupport/bootinfo.h>
 #include <seccells/seccells.h>
 #include "mmap_override.h"
 #endif /* CONFIG_RISCV_SECCELL */
