@@ -56,3 +56,9 @@ ApplyCommonSimulationSettings(${KernelSel4Arch})
 if(FORCE_IOMMU)
     set(KernelIOMMU ON CACHE BOOL "" FORCE)
 endif()
+
+# Set the evaluation type
+set(EvaluationType "uncomp" CACHE STRING "" FORCE)
+# set(EvaluationType "comp" CACHE STRING "" FORCE)
+# set(EvaluationType "oszcopy" CACHE STRING "" FORCE)
+# set(EvaluationType "sczcopy" CACHE STRING "" FORCE)

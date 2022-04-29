@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <seL4-playground/gen_config.h>
 #include <sel4/sel4.h>
 #include <sel4platsupport/platsupport.h>
 #include <stdio.h>

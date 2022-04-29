@@ -10,6 +10,8 @@ project(seL4-playground C ASM)
 include(settings.cmake)
 # Include the actual build system provided by seL4_tools
 include(tools/seL4_tools/cmake-tool/all.cmake)
+# Include configuration options
+include(config.cmake)
 
 # Include SecureCells-specific source files and libraries
 if(KernelSecCell)
@@ -49,6 +51,7 @@ target_link_libraries(seL4-playground
         sel4debug
         sel4_Config
         sel4_autoconf
+        seL4-playground_Config
         ${sc_libs}
 )
 
