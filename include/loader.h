@@ -1,3 +1,6 @@
+#ifndef LOADER_H
+#define LOADER_H
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -56,12 +59,12 @@ struct firewall_entry {
     UT_hash_handle hh;
 };
 
-uint32_t blacklist_ip[] = {
+static uint32_t blacklist_ip[] = {
     IP(0, 0, 0, 0),
     IP(192, 168, 1, 10),
     IP(255, 255, 255, 255)};
 
-struct translation_NAT translation_units[] = {
+static struct translation_NAT translation_units[] = {
     {10000, IP(192, 184, 121, 48), 17},
     {10001, IP(192, 83, 128, 40), 17},
     {10002, IP(192, 18, 92, 123), 17},
@@ -78,3 +81,5 @@ struct NAT_entry {
     uint32_t out_port;
     UT_hash_handle hh;
 };
+
+#endif /* LOADER_H */

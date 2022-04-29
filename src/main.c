@@ -8,8 +8,10 @@
 #include <sys/mman.h>
 
 #include "bench.h"
+#include "firewall.h"
 #include "loader.h"
 #include "mmap_override.h"
+#include "nat.h"
 
 struct ip_packet *ring_buffer;
 struct firewall_entry *firewall;
@@ -80,21 +82,6 @@ void print_ip_packet(struct ip_packet *p, bool options, bool data) {
     }
 }
 
-uint16_t get_header_checksum(struct ip_packet *p) {
-    uint32_t header_length = (sizeof(struct ip_packet) - 65536) / 16;
-    uint32_t checksum = 0;
-    for (size_t j = 0; j < header_length; j++) {
-        if (j == 5) continue;  // Corresponds to the checksum itself
-        checksum += ((uint16_t *)p)[j];
-    }
-    uint8_t carry = checksum >> 16;
-    checksum &= 0xffff;
-    checksum += carry;
-    checksum += checksum >> 16;
-    checksum &= 0xffff;
-    return checksum;
-}
-
 void ip_generate(struct ip_packet *p, size_t i) {  // TODO give tunable parameters
     p->version_ihl = (4 << 3) | 15;                // if IHL is less (min 5), we have to reduce the `options` field size
     p->dscp_ecn = 0;
@@ -132,28 +119,6 @@ void ip_generate(struct ip_packet *p, size_t i) {  // TODO give tunable paramete
     for (size_t i = 0; i < udp_packet->length; i++) {
         udp_packet->data[i] = 0;
     }
-}
-
-bool valid_address(uint32_t ip) {
-    struct firewall_entry *f;
-    HASH_FIND_INT(firewall, &ip, f);
-    return f == NULL;
-}
-
-bool process_firewall(struct ip_packet *p) {
-    return (p->header_checksum == get_header_checksum(p) && valid_address(p->source_address));
-}
-
-void process_NAT(struct ip_packet *p) {
-    struct NAT_entry *n;
-    uint32_t in_port = ((struct udp_packet *)&p->data)->dest_port;
-    HASH_FIND_INT(nat, &in_port, n);
-
-    if (n != NULL) {
-        p->dest_address = n->out_ip;
-        ((struct udp_packet *)&p->data)->dest_port = n->out_port;
-    }
-    return;
 }
 
 void sink(struct ip_packet *p) {

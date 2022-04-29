@@ -30,7 +30,9 @@ add_executable(
     seL4-playground
     src/main.c
     src/alloc.c
+    src/firewall.c
     src/mmap_override.c
+    src/nat.c
 )
 
 # Add the global include directory
