@@ -28,10 +28,6 @@ add_executable(
     seL4-playground
     src/main.c
     src/alloc.c
-    src/cache.c
-    src/cache_wrapper.c
-    src/jenkins_hash.c
-    src/slabs.c
     src/mmap_override.c
 )
 
