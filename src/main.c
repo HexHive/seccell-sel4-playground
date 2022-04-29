@@ -32,7 +32,14 @@ struct ip_packet *next_packet(struct ip_packet *p) {  // TODO use bounds
     return (struct ip_packet *)(address & ~G_LOW);
 }
 
-void setup() {
+int setup() {
+    ring_buffer = mmap(0, RING_BUFFER_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, 0, 0);
+
+    if (!ring_buffer) {
+        printf("Allocation of ring buffer failed\n");
+        return 1;
+    }
+
     firewall = NULL;
     size_t n_elems_firewall = sizeof(blacklist_ip) / sizeof(uint32_t);
     for (size_t i = 0; i < n_elems_firewall; i++) {
@@ -52,6 +59,8 @@ void setup() {
         n->out_port = translation_units[i].out_port;
         HASH_ADD_INT(nat, in_port, n);
     }
+
+    return 0;
 }
 
 void print_udp_packet(struct udp_packet *p) {
@@ -132,15 +141,11 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // TODO process arguments
-    ring_buffer = mmap(0, RING_BUFFER_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, 0, 0);
-
-    if (!ring_buffer) {
-        printf("Allocation of ring buffer failed\n");
+    int err = setup();
+    if (err != 0) {
         seL4_TCB_Suspend(seL4_CapInitThreadTCB);
         return 1;
     }
-    setup();
 
     struct ip_packet *end_buf = (struct ip_packet *)((size_t)ring_buffer + RING_BUFFER_SIZE);
     struct ip_packet *p = (((size_t)ring_buffer & G_LOW) == 0) ? ring_buffer : (struct ip_packet *)(((size_t)ring_buffer + G_UNIT) & ~G_LOW);
