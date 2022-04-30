@@ -105,10 +105,11 @@ int main(int argc, char *argv[]) {
     const char *cumulative_cycles = "Cumulative cycles:";
     const char *cumulative_instret = "Cumulative retired insns:";
     const size_t cumulative_str_len = MAX(strlen(cumulative_cycles), strlen(cumulative_instret));
+
+
+    printf("nitems,passidx,mcycle,minstret\n");
     for (size_t i = 0; i < NPASSES; i++) {
-        printf("Pass %3zd:\n", i);
-        printf("    %-*s %10zd\n", cumulative_str_len, cumulative_cycles, counters[i].cycle);
-        printf("    %-*s %10zd\n", cumulative_str_len, cumulative_instret, counters[i].instret);
+        printf("%10zd,%3zd,%10zd,%10zd\n", NITEMS, i, counters[i].cycle, counters[i].instret);
     }
 
     seL4_TCB_Suspend(seL4_CapInitThreadTCB);
