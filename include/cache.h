@@ -8,17 +8,26 @@
 #ifdef CONFIG_RISCV_SECCELL
 #include <seccells/seccells.h>
 
-#define SD_ENTRY(secdiv, func) do {   \
-  jals(secdiv, func##_entry);         \
-func##_entry:                         \
-  entry();                            \
-} while (0)
+#define SD_ENTRY(secdiv, func)                \
+    do {                                      \
+        asm volatile (                        \
+            "jals %[sd], _" #func "_entry\n"  \
+            "_" #func "_entry:\n"             \
+            "entry\n"                         \
+            :                                 \
+            : [sd] "r"(secdiv));              \
+    } while (0)
 
-#define SD_EXIT(secdiv, func) do {    \
-  jals(secdiv, func##_exit);          \
-func##_exit:                          \
-  entry();                            \
-} while (0)
+#define SD_EXIT(secdiv, func)                 \
+    do {                                      \
+        asm volatile (                        \
+            "jals %[sd], _" #func "_exit\n"   \
+            "_" #func "_exit:\n"              \
+            "entry\n"                         \
+            :                                 \
+            : [sd] "r"(secdiv));              \
+    } while (0)
+
 #endif /* CONFIG_RISCV_SECCELL */
 
 typedef struct _stritem {

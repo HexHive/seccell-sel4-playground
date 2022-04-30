@@ -23,6 +23,9 @@ else()
     )
 endif()
 
+# Use the same optimization level for userspace and kernel
+add_compile_options(${KernelOptimisation})
+
 # Name the executable and list source files required to build it
 add_executable(
     seL4-playground
