@@ -13,7 +13,13 @@
 #include "mmap_override.h"
 #include "nat.h"
 
-struct ip_packet *ring_buffer;
+#ifdef CONFIG_RISCV_SECCELL
+static const size_t packet_size = ROUND_UP_UNSAFE(sizeof(struct ip_packet), BIT(seL4_MinRangeBits));
+#else
+static const size_t packet_size = ROUND_UP_UNSAFE(sizeof(struct ip_packet), BIT(seL4_PageBits));
+#endif /* CONFIG_RISCV_SECCELL */
+
+struct ip_packet *ring_buffer[RING_BUFFER_ENTRIES];
 struct firewall_entry *firewall;
 struct NAT_entry *nat;
 
@@ -25,19 +31,15 @@ void print_users() {
     }
 }
 
-struct ip_packet *next_packet(struct ip_packet *p) {  // TODO use bounds
-    size_t address = (size_t)p;
-    address += p->total_length;
-    address += G_UNIT;  // We go to the next 4K-bounded address
-    return (struct ip_packet *)(address & ~G_LOW);
-}
-
 int setup() {
-    ring_buffer = mmap(0, RING_BUFFER_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, 0, 0);
-
-    if (!ring_buffer) {
-        printf("Allocation of ring buffer failed\n");
-        return 1;
+    for (size_t i = 0; i < RING_BUFFER_ENTRIES; i++) {
+        struct ip_packet *buff_entr = (struct ip_packet *)mmap(0, packet_size, PROT_READ | PROT_WRITE,
+                                                               MAP_ANONYMOUS | MAP_PRIVATE, 0, 0);
+        if (!buff_entr) {
+            printf("Allocation of memory region for packet failed\n");
+            return 1;
+        }
+        ring_buffer[i] = buff_entr;
     }
 
     firewall = NULL;
@@ -131,7 +133,7 @@ void ip_generate(struct ip_packet *p, size_t i) {  // TODO give tunable paramete
 }
 
 void sink(struct ip_packet *p) {
-    memset(p, 0, (size_t)next_packet(p) - (size_t)p);
+    memset(p, 0, packet_size);
 }
 
 int main(int argc, char *argv[]) {
@@ -147,16 +149,12 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    struct ip_packet *end_buf = (struct ip_packet *)((size_t)ring_buffer + RING_BUFFER_SIZE);
-    struct ip_packet *p = (((size_t)ring_buffer & G_LOW) == 0) ? ring_buffer : (struct ip_packet *)(((size_t)ring_buffer + G_UNIT) & ~G_LOW);
-    struct ip_packet *first_packet = p;
-    size_t i = 0;
-
     for (;;) {
         // TODO seccells instructions + change function calls by SDSwitch
-        while (p < end_buf) {
+        for (size_t i = 0; i < RING_BUFFER_ENTRIES; i++) {
+            struct ip_packet *p = ring_buffer[i];
             // SCReval
-            ip_generate(p, i++);
+            ip_generate(p, i);
             // SCGrant & SCTfer
 
             // SCRecv
@@ -168,11 +166,9 @@ int main(int argc, char *argv[]) {
             }
 
             print_ip_packet(p, false, true);
-            sink(ring_buffer);  // Consume...
+            sink(p);  // Consume...
             // SCInval
-            p = next_packet(p);
         }
-        p = first_packet;
     }
 
     seL4_TCB_Suspend(seL4_CapInitThreadTCB);
