@@ -19,9 +19,9 @@ void *mmap_override(void *start, size_t len, int prot, int flags, int fd, off_t 
     seL4_BootInfo *info = platsupport_get_bootinfo();
     static void *addr = (void *)MMAP_BASE;
 #ifdef CONFIG_RISCV_SECCELL
-        len = ROUND_UP(len, BIT(seL4_MinRangeBits));
+    len = ROUND_UP(len, BIT(seL4_MinRangeBits));
 #else
-        len = ROUND_UP(len, BIT(seL4_PageBits));
+    len = ROUND_UP(len, BIT(seL4_PageBits));
 #endif /* CONFIG_RISCV_SECCELL */
     if (start == NULL) {
         /* No start address passed => use the available address range from MMAP_BASE on */
@@ -40,13 +40,13 @@ void *mmap_override(void *start, size_t len, int prot, int flags, int fd, off_t 
     }
 #else
     /* Map page table structures */
-    for (; (size_t)start < (size_t)ret + len; start += BIT(seL4_PageTableBits + seL4_PageTableIndexBits)) {
-        seL4_CPtr pagetable = alloc_object(info, seL4_RISCV_PageTableObject, seL4_PageTableBits);
-        error = seL4_RISCV_PageTable_Map(pagetable, seL4_CapInitThreadVSpace, (seL4_Word)start,
-                                         seL4_RISCV_Default_VMAttributes);
-        if (unlikely(error != seL4_NoError)) {
-            ZF_LOGF("Failed to map page table @ %p", start);
-            return NULL;
+    for (; (size_t)start < (size_t)ret + len; start += BIT(seL4_PageTableBits)) {
+        error = seL4_NoError;
+        while (error == seL4_NoError) {
+            seL4_CPtr pagetable = alloc_object(info, seL4_RISCV_PageTableObject, seL4_PageTableBits);
+            error = seL4_RISCV_PageTable_Map(pagetable, seL4_CapInitThreadVSpace, (seL4_Word)start,
+                                             seL4_RISCV_Default_VMAttributes);
+            ZF_LOGF_IF(error != seL4_NoError && error != seL4_DeleteFirst, "Failed to map page table @ %p", start)
         }
     }
     /* Map actual pages */
@@ -54,10 +54,7 @@ void *mmap_override(void *start, size_t len, int prot, int flags, int fd, off_t 
         seL4_CPtr page = alloc_object(info, seL4_RISCV_4K_Page, seL4_PageBits);
         error = seL4_RISCV_Page_Map(page, seL4_CapInitThreadVSpace, (seL4_Word)start, seL4_ReadWrite,
                                     seL4_RISCV_Default_VMAttributes);
-        if (unlikely(error != seL4_NoError)) {
-            ZF_LOGF("Failed to map page @ %p", start);
-            return NULL;
-        }
+        ZF_LOGF_IF(error != seL4_NoError, "Failed to map page @ %p", start)
     }
 #endif /* CONFIG_RISCV_SECCELL */
     return ret;
