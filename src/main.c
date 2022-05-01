@@ -122,7 +122,7 @@ int setup() {
             return 1;
         }
         ring_buffer[i] = buff_entr;
-#if CONFIG_EVAL_TYPE_SC_ZCOPY
+#ifdef CONFIG_EVAL_TYPE_SC_ZCOPY
         /* By default, all possible packet slots pointed to by the ring buffer are invalidated */
         inval(ring_buffer[i]);
 #endif /* CONFIG_EVAL_TYPE_SC_ZCOPY */
@@ -179,10 +179,10 @@ void print_ip_packet(struct ip_packet *p, bool options, bool data) {
     }
 }
 
-void ip_generate(struct ip_packet *p, size_t i) {  // TODO give tunable parameters
-    p->version_ihl = (4 << 3) | 15;                // if IHL is less (min 5), we have to reduce the `options` field size
+void ip_generate(struct ip_packet *p, size_t i, size_t data_size) {  // TODO give tunable parameters
+    p->version_ihl = (4 << 3) | 15;  // if IHL is less (min 5), we have to reduce the `options` field size
     p->dscp_ecn = 0;
-    p->total_length = 64 + (i * 91 % 73);  // TODO make it variable // Same as with IHL, but `data` field
+    p->total_length = 64 + data_size;  // TODO make it variable // Same as with IHL, but `data` field
     p->identification = 0;
     p->flags_fragment_offset = 0;
     p->ttl = 0;
@@ -214,13 +214,15 @@ void ip_generate(struct ip_packet *p, size_t i) {  // TODO give tunable paramete
     udp_packet->length = p->total_length - 64;
     udp_packet->checksum = 0;
     for (size_t i = 0; i < udp_packet->length; i++) {
-        udp_packet->data[i] = 0;
+        /* Just fill the packet with more or less random data */
+        udp_packet->data[i] = i % 256;
     }
 }
 
 void sink(struct ip_packet *p) {
-    print_ip_packet(p, false, true);
-    memset(p, 0, packet_size);
+    // print_ip_packet(p, false, true);
+    // memset(p, 0, packet_size);
+    return;
 }
 
 int main(int argc, char *argv[]) {
@@ -236,75 +238,105 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    for (;;) {
-        for (size_t i = 0; i < RING_BUFFER_ENTRIES; i++) {
+    perf_counters_t counters[NPASSES] = { 0 };
+    perf_counters_t before = { 0 };
+    perf_counters_t after = { 0 };
+
+#ifdef CONFIG_PRINT_CSV
+    /* Print CSV header */
+    printf("Data size");
+    for (size_t pass = 0; pass < NPASSES; pass++) {
+        printf(";Pass %zd", pass);
+    }
+    printf("\n");
+#endif /* CONFIG_PRINT_CSV */
+
+    for (size_t size = MIN_PACKET_SIZE; size <= MAX_PACKET_SIZE; size += MIN_PACKET_SIZE) {
+        for (size_t pass = 0; pass < NPASSES; pass++) {
+            for (size_t i = 0; i < RING_BUFFER_ENTRIES; i++) {
+                RDCTR(before.instret, instret);
 #ifdef CONFIG_EVAL_TYPE_SC_ZCOPY
-            /* Revalidate the packet => has been invalidated before */
-            reval(ring_buffer[i], RT_R | RT_W);
+                /* Revalidate the packet => has been invalidated before */
+                reval(ring_buffer[i], RT_R | RT_W);
 #endif /* CONFIG_EVAL_TYPE_SC_ZCOPY */
-            ip_generate(ring_buffer[i], i);
+                ip_generate(ring_buffer[i], i, size);
 #ifdef CONFIG_EVAL_TYPE_COMP
-            /* Copy the packet into a heap buffer to pass it to the next compartment */
-            memcpy((void *)to_firewall, (void *)ring_buffer[i], packet_size);
-            struct ip_packet *p = to_firewall;
+                /* Copy the packet into a heap buffer to pass it to the next compartment */
+                memcpy((void *)to_firewall, (void *)ring_buffer[i], ring_buffer[i]->total_length);
+                struct ip_packet *p = to_firewall;
 #else
-            /* Simply reference the packet based on the ring buffer */
-            struct ip_packet *p = ring_buffer[i];
-#endif      /* CONFIG_EVAL_TYPE_COMP */
+                /* Simply reference the packet based on the ring buffer */
+                struct ip_packet *p = ring_buffer[i];
+#endif /* CONFIG_EVAL_TYPE_COMP */
 
 #if SWITCH_SD
 #ifdef CONFIG_EVAL_TYPE_SC_ZCOPY
-            /* Transfer permissions */
-            tfer(p, firewall_secdiv, RT_R | RT_W);
+                /* Transfer permissions */
+                tfer(p, firewall_secdiv, RT_R | RT_W);
 #endif /* CONFIG_EVAL_TYPE_SC_ZCOPY */
-            SD_ENTRY(firewall_secdiv, firewall);
+                SD_ENTRY(firewall_secdiv, firewall);
 #ifdef CONFIG_EVAL_TYPE_SC_ZCOPY
-            /* Receive granted permissions */
-            recv(p, generator_secdiv, RT_R | RT_W);
+                /* Receive granted permissions */
+                recv(p, generator_secdiv, RT_R | RT_W);
 #endif /* CONFIG_EVAL_TYPE_SC_ZCOPY */
 #endif /* SWITCH_SD */
-            if (process_firewall(p)) {
+                if (process_firewall(p)) {
+#if SWITCH_SD
+#if defined(CONFIG_EVAL_TYPE_COMP)
+                    /* Copy the packet into a heap buffer to pass it to the next compartment */
+                    memcpy((void *)to_nat, (void *)to_firewall, p->total_length);
+                    p = to_nat;
+#elif defined(CONFIG_EVAL_TYPE_SC_ZCOPY)
+                    /* Transfer permissions */
+                    tfer(p, nat_secdiv, RT_R | RT_W);
+#endif /* CONFIG_EVAL_TYPE_COMP / CONFIG_EVAL_TYPE_SC_ZCOPY */
+                    SD_ENTRY(nat_secdiv, nat);
+#ifdef CONFIG_EVAL_TYPE_SC_ZCOPY
+                    /* Receive granted permissions */
+                    recv(p, firewall_secdiv, RT_R | RT_W);
+#endif /* CONFIG_EVAL_TYPE_SC_ZCOPY */
+#endif /* SWITCH_SD */
+                    process_NAT(p);
+                }
 #if SWITCH_SD
 #if defined(CONFIG_EVAL_TYPE_COMP)
                 /* Copy the packet into a heap buffer to pass it to the next compartment */
-                memcpy((void *)to_nat, (void *)to_firewall, packet_size);
-                p = to_nat;
+                memcpy((void *)to_generator, (void *)to_nat, p->total_length);
+                p = to_generator;
 #elif defined(CONFIG_EVAL_TYPE_SC_ZCOPY)
                 /* Transfer permissions */
-                tfer(p, nat_secdiv, RT_R | RT_W);
+                tfer(p, generator_secdiv, RT_R | RT_W);
 #endif /* CONFIG_EVAL_TYPE_COMP / CONFIG_EVAL_TYPE_SC_ZCOPY */
-                SD_ENTRY(nat_secdiv, nat);
+                SD_ENTRY(generator_secdiv, generator);
 #ifdef CONFIG_EVAL_TYPE_SC_ZCOPY
+                /* Need to fetch previous SD's ID because we can either arrive here from the firewall or the NAT SecDiv */
+                unsigned int prev_sd;
+                csrr_urid(prev_sd);
                 /* Receive granted permissions */
-                recv(p, firewall_secdiv, RT_R | RT_W);
-#endif /* CONFIG_EVAL_TYPE_SC_ZCOPY */
-#endif /* SWITCH_SD */
-                process_NAT(p);
-            }
-#if SWITCH_SD
-#if defined(CONFIG_EVAL_TYPE_COMP)
-            /* Copy the packet into a heap buffer to pass it to the next compartment */
-            memcpy((void *)to_generator, (void *)to_nat, packet_size);
-            p = to_generator;
-#elif defined(CONFIG_EVAL_TYPE_SC_ZCOPY)
-            /* Transfer permissions */
-            tfer(p, generator_secdiv, RT_R | RT_W);
-#endif /* CONFIG_EVAL_TYPE_COMP / CONFIG_EVAL_TYPE_SC_ZCOPY */
-            SD_ENTRY(generator_secdiv, generator);
-#ifdef CONFIG_EVAL_TYPE_SC_ZCOPY
-            /* Need to fetch previous SD's ID because we can either arrive here from the firewall or the NAT SecDiv */
-            unsigned int prev_sd;
-            csrr_urid(prev_sd);
-            /* Receive granted permissions */
-            recv(p, prev_sd, RT_R | RT_W);
+                recv(p, prev_sd, RT_R | RT_W);
 #endif /* CONFIG_EVAL_TYPE_SC_ZCOPY */
 #endif /* SWITCH_SD */
 
-            sink(p);  // Consume...
+                sink(p);  // Consume...
 #ifdef CONFIG_EVAL_TYPE_SC_ZCOPY
-            inval(p);
+                inval(p);
 #endif /* CONFIG_EVAL_TYPE_SC_ZCOPY */
+                RDCTR(after.instret, instret);
+                counters[pass].instret += after.instret - before.instret;
+            }
         }
+#ifdef CONFIG_PRINT_CSV
+        printf("%zd", size);
+        for (size_t pass = 0; pass < NPASSES; pass++) {
+            printf(";%zd", counters[pass].instret);
+        }
+        printf("\n");
+#else
+        printf("Cumulative instruction counts for packet size %zd bytes:\n", size);
+        for (size_t pass = 0; pass < NPASSES; pass++) {
+            printf("    Pass %3zd: %12zd\n", pass, counters[pass].instret);
+        }
+#endif /* CONFIG_PRINT_CSV */
     }
 
     seL4_TCB_Suspend(seL4_CapInitThreadTCB);

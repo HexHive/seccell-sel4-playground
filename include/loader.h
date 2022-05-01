@@ -34,7 +34,10 @@ struct udp_packet {
     uint8_t data[65472];
 };
 
-#define RING_BUFFER_ENTRIES 32
+#define RING_BUFFER_ENTRIES 16
+#define MIN_PACKET_SIZE 64
+#define MAX_PACKET_SIZE 65536
+#define NPASSES 2
 
 // TODO variable-sized attributes not part of the packet, calculate on-the-fly
 

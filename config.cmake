@@ -16,4 +16,9 @@ config_choice(
     "sczcopy;EvaluationTypeSCZeroCopy;EVAL_TYPE_SC_ZCOPY;KernelArchRiscV AND KernelSecCell"
 )
 
+config_option(
+    PrintAsCSV PRINT_CSV "Print statistics in CSV format instead of nicely human-readable."
+    DEFAULT OFF
+)
+
 add_config_library(seL4-playground "${configure_string}")
