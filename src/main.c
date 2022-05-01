@@ -14,8 +14,44 @@
 #include "nat.h"
 
 #ifdef CONFIG_RISCV_SECCELL
+#include <seccells/seccells.h>
+
+#define SD_ENTRY(secdiv, func)                \
+    do {                                      \
+        asm volatile (                        \
+            "jals %[sd], _" #func "_entry\n"  \
+            "_" #func "_entry:\n"             \
+            "entry\n"                         \
+            :                                 \
+            : [sd] "r"(secdiv));              \
+    } while (0)
+
+#define SD_EXIT(secdiv, func)                 \
+    do {                                      \
+        asm volatile (                        \
+            "jals %[sd], _" #func "_exit\n"   \
+            "_" #func "_exit:\n"              \
+            "entry\n"                         \
+            :                                 \
+            : [sd] "r"(secdiv));              \
+    } while (0)
+
+/* SecDiv IDs get initialized in the code */
+static unsigned int firewall_secdiv = 0;
+static unsigned int nat_secdiv = 0;
+static unsigned int generator_secdiv = 0;
+
+#ifdef CONFIG_EVAL_TYPE_COMP
+/* Additional buffers for passing the packet data between compartments via copies => get set up in the code */
+static struct ip_packet *to_firewall = NULL;
+static struct ip_packet *to_nat = NULL;
+static struct ip_packet *to_generator = NULL;
+#endif /* CONFIG_EVAL_TYPE_COMP */
+
+#define SWITCH_SD (defined(CONFIG_EVAL_TYPE_COMP) || defined(CONFIG_EVAL_TYPE_SC_ZCOPY))
 static const size_t packet_size = ROUND_UP_UNSAFE(sizeof(struct ip_packet), BIT(seL4_MinRangeBits));
 #else
+#define SWITCH_SD 0
 static const size_t packet_size = ROUND_UP_UNSAFE(sizeof(struct ip_packet), BIT(seL4_PageBits));
 #endif /* CONFIG_RISCV_SECCELL */
 
@@ -32,6 +68,52 @@ void print_users() {
 }
 
 int setup() {
+#ifdef CONFIG_RISCV_SECCELL
+    /* Create the firewall SecDiv */
+    seL4_RISCV_RangeTable_AddSecDiv_t ret = seL4_RISCV_RangeTable_AddSecDiv(seL4_CapInitThreadVSpace);
+    if (unlikely(ret.error != seL4_NoError)) {
+        ZF_LOGF("Failed to create firewall SecDiv");
+        return 1;
+    }
+    firewall_secdiv = ret.id;
+    /* Create the NAT SecDiv */
+    ret = seL4_RISCV_RangeTable_AddSecDiv(seL4_CapInitThreadVSpace);
+    if (unlikely(ret.error != seL4_NoError)) {
+        ZF_LOGF("Failed to create NAT SecDiv");
+        return 1;
+    }
+    nat_secdiv = ret.id;
+    /* Store the requesting SecDiv's ID */
+    csrr_usid(generator_secdiv);
+
+    /* Grant permissions to the firewall SecDiv */
+    seL4_Error err = seL4_RISCV_RangeTable_GrantSecDivPermissions(seL4_CapInitThreadVSpace, (seL4_Word)firewall_secdiv,
+                                                                  (seL4_Word)&process_firewall, RT_R | RT_W | RT_X);
+    if (unlikely(err != seL4_NoError)) {
+        ZF_LOGF("Failed to grant permissions to the firewall SecDiv");
+        return 1;
+    }
+    /* Grant permissions to the NAT SecDiv */
+    err = seL4_RISCV_RangeTable_GrantSecDivPermissions(seL4_CapInitThreadVSpace, (seL4_Word)nat_secdiv,
+                                                       (seL4_Word)&process_NAT, RT_R | RT_W | RT_X);
+    if (unlikely(err != seL4_NoError)) {
+        ZF_LOGF("Failed to grant permissions to the NAT SecDiv");
+        return 1;
+    }
+
+#ifdef CONFIG_EVAL_TYPE_COMP
+    /* Initialize the buffers for copying packets between compartments */
+    struct ip_packet **buffers[3] = {&to_firewall, &to_nat, &to_generator};
+    for (size_t i = 0; i < 3; i++) {
+        *buffers[i] = (struct ip_packet *)malloc(packet_size);
+        if (buffers[i] == NULL) {
+            printf("Allocation of copy buffer for data passing failed\n");
+            return 1;
+        }
+    }
+#endif /* CONFIG_EVAL_TYPE_COMP */
+#endif /* CONFIG_RISCV_SECCELL */
+
     for (size_t i = 0; i < RING_BUFFER_ENTRIES; i++) {
         struct ip_packet *buff_entr = (struct ip_packet *)mmap(0, packet_size, PROT_READ | PROT_WRITE,
                                                                MAP_ANONYMOUS | MAP_PRIVATE, 0, 0);
@@ -133,6 +215,7 @@ void ip_generate(struct ip_packet *p, size_t i) {  // TODO give tunable paramete
 }
 
 void sink(struct ip_packet *p) {
+    print_ip_packet(p, false, true);
     memset(p, 0, packet_size);
 }
 
@@ -152,20 +235,45 @@ int main(int argc, char *argv[]) {
     for (;;) {
         // TODO seccells instructions + change function calls by SDSwitch
         for (size_t i = 0; i < RING_BUFFER_ENTRIES; i++) {
+            ip_generate(ring_buffer[i], i);
+#ifdef CONFIG_EVAL_TYPE_COMP
+            /* Copy the packet into a heap buffer to pass it to the next compartment */
+            memcpy((void *)to_firewall, (void *)ring_buffer[i], packet_size);
+            struct ip_packet *p = to_firewall;
+#else
+            /* Simply reference the packet based on the ring buffer */
             struct ip_packet *p = ring_buffer[i];
+#endif      /* CONFIG_EVAL_TYPE_COMP */
             // SCReval
-            ip_generate(p, i);
             // SCGrant & SCTfer
 
+#if SWITCH_SD
+            SD_ENTRY(firewall_secdiv, firewall);
+#endif /* SWITCH_SD */
             // SCRecv
             if (process_firewall(p)) {
                 // SCProt
                 // SCRecv
+#if SWITCH_SD
+#ifdef CONFIG_EVAL_TYPE_COMP
+                /* Copy the packet into a heap buffer to pass it to the next compartment */
+                memcpy((void *)to_nat, (void *)to_firewall, packet_size);
+                p = to_nat;
+#endif /* CONFIG_EVAL_TYPE_COMP */
+                SD_ENTRY(nat_secdiv, nat);
+#endif /* SWITCH_SD */
                 process_NAT(p);
                 // SCTfer
             }
+#if SWITCH_SD
+#ifdef CONFIG_EVAL_TYPE_COMP
+            /* Copy the packet into a heap buffer to pass it to the next compartment */
+            memcpy((void *)to_generator, (void *)to_nat, packet_size);
+            p = to_generator;
+#endif /* CONFIG_EVAL_TYPE_COMP */
+            SD_ENTRY(generator_secdiv, generator);
+#endif /* SWITCH_SD */
 
-            print_ip_packet(p, false, true);
             sink(p);  // Consume...
             // SCInval
         }
