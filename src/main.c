@@ -122,6 +122,10 @@ int setup() {
             return 1;
         }
         ring_buffer[i] = buff_entr;
+#if CONFIG_EVAL_TYPE_SC_ZCOPY
+        /* By default, all possible packet slots pointed to by the ring buffer are invalidated */
+        inval(ring_buffer[i]);
+#endif /* CONFIG_EVAL_TYPE_SC_ZCOPY */
     }
 
     firewall = NULL;
@@ -233,8 +237,11 @@ int main(int argc, char *argv[]) {
     }
 
     for (;;) {
-        // TODO seccells instructions + change function calls by SDSwitch
         for (size_t i = 0; i < RING_BUFFER_ENTRIES; i++) {
+#ifdef CONFIG_EVAL_TYPE_SC_ZCOPY
+            /* Revalidate the packet => has been invalidated before */
+            reval(ring_buffer[i], RT_R | RT_W);
+#endif /* CONFIG_EVAL_TYPE_SC_ZCOPY */
             ip_generate(ring_buffer[i], i);
 #ifdef CONFIG_EVAL_TYPE_COMP
             /* Copy the packet into a heap buffer to pass it to the next compartment */
@@ -244,38 +251,59 @@ int main(int argc, char *argv[]) {
             /* Simply reference the packet based on the ring buffer */
             struct ip_packet *p = ring_buffer[i];
 #endif      /* CONFIG_EVAL_TYPE_COMP */
-            // SCReval
-            // SCGrant & SCTfer
 
 #if SWITCH_SD
+#ifdef CONFIG_EVAL_TYPE_SC_ZCOPY
+            /* Transfer permissions */
+            tfer(p, firewall_secdiv, RT_R | RT_W);
+#endif /* CONFIG_EVAL_TYPE_SC_ZCOPY */
             SD_ENTRY(firewall_secdiv, firewall);
+#ifdef CONFIG_EVAL_TYPE_SC_ZCOPY
+            /* Receive granted permissions */
+            recv(p, generator_secdiv, RT_R | RT_W);
+#endif /* CONFIG_EVAL_TYPE_SC_ZCOPY */
 #endif /* SWITCH_SD */
-            // SCRecv
             if (process_firewall(p)) {
-                // SCProt
-                // SCRecv
 #if SWITCH_SD
-#ifdef CONFIG_EVAL_TYPE_COMP
+#if defined(CONFIG_EVAL_TYPE_COMP)
                 /* Copy the packet into a heap buffer to pass it to the next compartment */
                 memcpy((void *)to_nat, (void *)to_firewall, packet_size);
                 p = to_nat;
-#endif /* CONFIG_EVAL_TYPE_COMP */
+#elif defined(CONFIG_EVAL_TYPE_SC_ZCOPY)
+                /* Transfer permissions */
+                tfer(p, nat_secdiv, RT_R | RT_W);
+#endif /* CONFIG_EVAL_TYPE_COMP / CONFIG_EVAL_TYPE_SC_ZCOPY */
                 SD_ENTRY(nat_secdiv, nat);
+#ifdef CONFIG_EVAL_TYPE_SC_ZCOPY
+                /* Receive granted permissions */
+                recv(p, firewall_secdiv, RT_R | RT_W);
+#endif /* CONFIG_EVAL_TYPE_SC_ZCOPY */
 #endif /* SWITCH_SD */
                 process_NAT(p);
-                // SCTfer
             }
 #if SWITCH_SD
-#ifdef CONFIG_EVAL_TYPE_COMP
+#if defined(CONFIG_EVAL_TYPE_COMP)
             /* Copy the packet into a heap buffer to pass it to the next compartment */
             memcpy((void *)to_generator, (void *)to_nat, packet_size);
             p = to_generator;
-#endif /* CONFIG_EVAL_TYPE_COMP */
+#elif defined(CONFIG_EVAL_TYPE_SC_ZCOPY)
+            /* Transfer permissions */
+            tfer(p, generator_secdiv, RT_R | RT_W);
+#endif /* CONFIG_EVAL_TYPE_COMP / CONFIG_EVAL_TYPE_SC_ZCOPY */
             SD_ENTRY(generator_secdiv, generator);
+#ifdef CONFIG_EVAL_TYPE_SC_ZCOPY
+            /* Need to fetch previous SD's ID because we can either arrive here from the firewall or the NAT SecDiv */
+            unsigned int prev_sd;
+            csrr_urid(prev_sd);
+            /* Receive granted permissions */
+            recv(p, prev_sd, RT_R | RT_W);
+#endif /* CONFIG_EVAL_TYPE_SC_ZCOPY */
 #endif /* SWITCH_SD */
 
             sink(p);  // Consume...
-            // SCInval
+#ifdef CONFIG_EVAL_TYPE_SC_ZCOPY
+            inval(p);
+#endif /* CONFIG_EVAL_TYPE_SC_ZCOPY */
         }
     }
 
