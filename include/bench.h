@@ -4,15 +4,25 @@
 #include <stddef.h>
 
 typedef struct perf_counters {
-    size_t instret;
-    size_t cycle;
-    size_t time;
+    uint64_t instret;
+    uint64_t cycle;
+    uint64_t time;
+    uint64_t mem, tlb;
 } perf_counters_t;
 
 #define RDCTR(dest, counter)          \
     do {                              \
         asm volatile(                 \
             "rd" # counter " %[ctr]"  \
+            : [ctr] "=r"(dest)        \
+            :);                       \
+    } while (0)
+
+
+#define RD_CTR(dest, counter)          \
+    do {                              \
+        asm volatile(                 \
+            "csrr %[ctr], " # counter \
             : [ctr] "=r"(dest)        \
             :);                       \
     } while (0)

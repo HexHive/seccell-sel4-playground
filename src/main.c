@@ -83,33 +83,54 @@ int main(int argc, char *argv[]) {
         assert(r >= 0);
     }
 
+#define LD_INST_RET   9
+#define ST_INST_RET   10
+#define AT_INST_RET   11
+#define L2_TLB_MISS   13
+
+    /* HPM event: L2 TLB miss */
+    uint64_t event3 = (1 << L2_TLB_MISS) | 0x2;  
+    /* HPM event: load, store, atomic retired */
+    uint64_t event4 = (1 << LD_INST_RET) | (1 << ST_INST_RET) | (1 << AT_INST_RET) | 0x0;   
+    asm volatile ("csrw mhpmevent3, %[event3];"
+                 "csrw mhpmevent4, %[event4];"
+                    :: [event3] "r" (event3),
+                        [event4] "r" (event4)
+                    :);
+
     /* Retrieve same values into cache */
     for (int j = 0; j < NPASSES; j++) {
         for (int i = 0; i < NITEMS; i++) {
             memset(&key, 0, sizeof(key));
             make_key(i, &key);
             int enclen = encrypt_key(ctx, &key, enckeybuf);
-            size_t before_i, after_i, before_c, after_c;
+            uint64_t before_i, after_i, before_c, after_c;
+            uint64_t before_tlb, after_tlb, before_mem, after_mem;
+
+            RD_CTR(before_tlb, mhpmcounter3);
+            RD_CTR(before_mem, mhpmcounter4);
             RDCTR(before_i, instret);
             RDCTR(before_c, cycle);
             cache_get_wrapper(enckeybuf, enclen, encvalbuf, 256);
             RDCTR(after_c, cycle);
             RDCTR(after_i, instret);
+            RD_CTR(after_mem, mhpmcounter4);
+            RD_CTR(after_tlb, mhpmcounter3);
             counters[j].instret += after_i - before_i;
             counters[j].cycle += after_c - before_c;
+            counters[j].tlb += after_tlb - before_tlb;
+            counters[j].mem += after_mem - before_mem;
         }
     }
 
     wrapper_free();
 
-    const char *cumulative_cycles = "Cumulative cycles:";
-    const char *cumulative_instret = "Cumulative retired insns:";
-    const size_t cumulative_str_len = MAX(strlen(cumulative_cycles), strlen(cumulative_instret));
 
-
-    printf("nitems,passidx,mcycle,minstret\n");
+    printf("nitems,passidx,mcycle,minstret,memaccs,tlbmisses\n");
     for (size_t i = 0; i < NPASSES; i++) {
-        printf("%10zd,%3zd,%10zd,%10zd\n", NITEMS, i, counters[i].cycle, counters[i].instret);
+        printf("%10zd,%3zd,%10zd,%10zd,%10zd,%10zd\n", NITEMS, i, 
+                        counters[i].cycle, counters[i].instret, 
+                        counters[i].mem, counters[i].tlb);
     }
 
     seL4_TCB_Suspend(seL4_CapInitThreadTCB);
