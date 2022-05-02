@@ -298,29 +298,16 @@ int main(int argc, char *argv[]) {
 #endif /* SWITCH_SD */
                     process_NAT(p);
                 }
-#if SWITCH_SD
-#if defined(CONFIG_EVAL_TYPE_COMP)
-                /* Copy the packet into a heap buffer to pass it to the next compartment */
-                memcpy((void *)to_generator, (void *)to_nat, p->total_length);
-                p = to_generator;
-#elif defined(CONFIG_EVAL_TYPE_SC_ZCOPY)
-                /* Transfer permissions */
-                tfer(p, generator_secdiv, RT_R | RT_W);
-#endif /* CONFIG_EVAL_TYPE_COMP / CONFIG_EVAL_TYPE_SC_ZCOPY */
-                SD_ENTRY(generator_secdiv, generator);
-#ifdef CONFIG_EVAL_TYPE_SC_ZCOPY
-                /* Need to fetch previous SD's ID because we can either arrive here from the firewall or the NAT SecDiv */
-                unsigned int prev_sd;
-                csrr_urid(prev_sd);
-                /* Receive granted permissions */
-                recv(p, prev_sd, RT_R | RT_W);
-#endif /* CONFIG_EVAL_TYPE_SC_ZCOPY */
-#endif /* SWITCH_SD */
 
                 sink(p);  // Consume...
-#ifdef CONFIG_EVAL_TYPE_SC_ZCOPY
+#if defined(CONFIG_EVAL_TYPE_SC_ZCOPY)
+                /* Drop packet permissions */
                 inval(p);
 #endif /* CONFIG_EVAL_TYPE_SC_ZCOPY */
+
+#if SWITCH_SD
+                SD_ENTRY(generator_secdiv, generator);
+#endif /* SWITCH_SD */
                 RDCTR(after.instret, instret);
                 counters[pass].instret += after.instret - before.instret;
             }
