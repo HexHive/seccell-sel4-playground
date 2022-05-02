@@ -88,15 +88,15 @@ int main(int argc, char *argv[]) {
 #define AT_INST_RET   11
 #define L2_TLB_MISS   13
 
-    /* HPM event: L2 TLB miss */
-    uint64_t event3 = (1 << L2_TLB_MISS) | 0x2;  
-    /* HPM event: load, store, atomic retired */
-    uint64_t event4 = (1 << LD_INST_RET) | (1 << ST_INST_RET) | (1 << AT_INST_RET) | 0x0;   
-    asm volatile ("csrw mhpmevent3, %[event3];"
-                 "csrw mhpmevent4, %[event4];"
-                    :: [event3] "r" (event3),
-                        [event4] "r" (event4)
-                    :);
+    // /* HPM event: L2 TLB miss */
+    // uint64_t event3 = (1 << L2_TLB_MISS) | 0x2;  
+    // /* HPM event: load, store, atomic retired */
+    // uint64_t event4 = (1 << LD_INST_RET) | (1 << ST_INST_RET) | (1 << AT_INST_RET) | 0x0;   
+    // asm volatile ("csrw mhpmevent3, %[event3];"
+    //              "csrw mhpmevent4, %[event4];"
+    //                 :: [event3] "r" (event3),
+    //                     [event4] "r" (event4)
+    //                 :);
 
     /* Retrieve same values into cache */
     for (int j = 0; j < NPASSES; j++) {
