@@ -1,7 +1,7 @@
 [submodule "kernel"]
 	path = kernel
 	url = git@github.com:HexHive/seccell-seL4.git
-	branch = secure-florian
+	branch = secure
 [submodule "projects/musllibc"]
 	path = projects/musllibc
 	url = https://github.com/seL4/musllibc.git
