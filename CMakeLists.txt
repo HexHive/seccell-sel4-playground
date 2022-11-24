@@ -10,18 +10,35 @@ project(seL4-playground C ASM)
 include(settings.cmake)
 # Include the actual build system provided by seL4_tools
 include(tools/seL4_tools/cmake-tool/all.cmake)
+# Include configuration options
+include(config.cmake)
+
+# Include SecureCells-specific source files and libraries
+if(KernelSecCell)
+    set(sc_libs
+        ${sc_libs}
+        seL4seccells
+    )
+else()
+    set(sc_libs
+        ${sc_libs}
+    )
+endif()
 
 # Name the executable and list source files required to build it
 add_executable(
     seL4-playground
-    src/main.c
-    src/alloc.c
+    seccell-browser/main.c
+    seccell-browser/engine.c
+    seccell-browser/commands.c
+    seccell-browser/external.c
 )
 
 # Add the global include directory
 target_include_directories(seL4-playground
     PRIVATE
         include/
+        seccell-browser/
 )
 
 # List the libraries to link with the application
