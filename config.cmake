@@ -18,3 +18,4 @@ config_option(
 )
 
 add_config_library(seL4-playground "${configure_string}")
+add_compile_options(-DSEL4)

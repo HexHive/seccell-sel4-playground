@@ -32,6 +32,7 @@ add_executable(
     seccell-browser/engine.c
     seccell-browser/commands.c
     seccell-browser/external.c
+    src/mmap_override.c
 )
 
 # Add the global include directory
@@ -43,15 +44,18 @@ target_include_directories(seL4-playground
 
 # List the libraries to link with the application
 target_link_libraries(seL4-playground
-    PUBLIC
-        sel4
-        muslc
-        utils
-        seL4seccells
-        sel4muslcsys
-        sel4platsupport
-        sel4utils
-        sel4debug
+PUBLIC
+    sel4
+    muslc
+    utils
+    sel4muslcsys
+    sel4platsupport
+    sel4utils
+    sel4debug
+    sel4_Config
+    sel4_autoconf
+    seL4-playground_Config
+    ${sc_libs}
 )
 
 # Tell the build system that this application is the root task
