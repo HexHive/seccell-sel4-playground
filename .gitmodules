@@ -30,3 +30,6 @@
 	path = projects/seL4_seccells
 	url = git@github.com:HexHive/seccell-seL4_libseccells.git
 	branch = main
+[submodule "seccell-browser"]
+	path = seccell-browser
+	url = git@github.com:HexHive/seccell-browser.git
