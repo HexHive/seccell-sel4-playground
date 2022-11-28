@@ -17,7 +17,8 @@ include(config.cmake)
 if(KernelSecCell)
     set(sc_libs
         ${sc_libs}
-        seL4seccells
+        # Disabled since we have our own version of scthreads
+        # seL4seccells
     )
 else()
     set(sc_libs
@@ -32,6 +33,9 @@ add_executable(
     seccell-browser/engine.c
     seccell-browser/commands.c
     seccell-browser/external.c
+    seccell-browser/alloc.c
+    seccell-browser/scthreads.c
+    seccell-browser/scthreads.S
     src/mmap_override.c
 )
 
